@@ -93,9 +93,10 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - "80:80"     # Backoffice (+ inscription)
-      - "81:81"     # Caisse
-      - "82:82"     # Stock
+      # Ports hôte configurables (défaut 80/81/82 ; voir HTTP_* dans .env)
+      - "${HTTP_BACKOFFICE:-80}:80"   # Backoffice (+ inscription)
+      - "${HTTP_CAISSE:-81}:81"       # Caisse
+      - "${HTTP_STOCK:-82}:82"        # Stock
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx-backend.conf:/etc/nginx/dutyfree_backend.conf:ro

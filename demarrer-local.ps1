@@ -21,11 +21,20 @@ Write-Host "Construction et démarrage (le premier lancement prend quelques minu
 docker compose up -d --build
 if ($LASTEXITCODE -ne 0) { throw "docker compose up a échoué" }
 
+# Ports hôte (lus depuis .env, défaut 80/81/82)
+function Get-EnvPort($name, $default) {
+    $line = Get-Content .env -ErrorAction SilentlyContinue | Where-Object { $_ -match "^$name=" } | Select-Object -First 1
+    if ($line) { ($line -split '=', 2)[1].Trim() } else { $default }
+}
+$pBack = Get-EnvPort 'HTTP_BACKOFFICE' '80'
+$pCaisse = Get-EnvPort 'HTTP_CAISSE' '81'
+$pStock = Get-EnvPort 'HTTP_STOCK' '82'
+
 Write-Host "Attente du backend..." -ForegroundColor Cyan
 $pret = $false
 for ($i = 0; $i -lt 60; $i++) {
     try {
-        $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 http://localhost/api/health/
+        $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 "http://localhost:$pBack/api/health/"
         if ($r.StatusCode -eq 200) { $pret = $true; break }
     } catch { }
     Start-Sleep -Seconds 3
@@ -40,12 +49,12 @@ docker compose exec -T -e DJANGO_SUPERUSER_PASSWORD=Plateforme-Local-2025 backen
 
 Write-Host ""
 Write-Host "══════════════ Plateforme prête ══════════════" -ForegroundColor Green
-Write-Host " Backoffice   http://localhost        (code entreprise : demo / admin / dutyfree2025)"
-Write-Host " Inscription  http://localhost/inscription"
-Write-Host " Caisse       http://localhost:81     (demo / Aminata Sawadogo / PIN 1234)"
-Write-Host " Stock        http://localhost:82     (demo / stock / dutyfree2025)"
+Write-Host " Backoffice   http://localhost:$pBack        (code entreprise : demo / admin / dutyfree2025)"
+Write-Host " Inscription  http://localhost:$pBack/inscription"
+Write-Host " Caisse       http://localhost:$pCaisse     (demo / Aminata Sawadogo / PIN 1234)"
+Write-Host " Stock        http://localhost:$pStock     (demo / stock / dutyfree2025)"
 Write-Host " Emails       http://localhost:8025   (Mailpit)"
-Write-Host " Admin SaaS   http://localhost/admin/ (plateforme / Plateforme-Local-2025)"
+Write-Host " Admin SaaS   http://localhost:$pBack/admin/ (plateforme / Plateforme-Local-2025)"
 Write-Host ""
 Write-Host " Activer une boutique SANS payer : /admin/ -> Organisations -> action 'Activer / offrir N mois'"
 Write-Host " Tableau de bord operateur : bouton en haut de la liste Organisations dans /admin/"

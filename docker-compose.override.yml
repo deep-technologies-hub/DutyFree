@@ -14,10 +14,10 @@ x-local-env: &local-env
   EMAIL_HOST_PASSWORD: ""
   PAYMENT_PROVIDER: simulateur
   PAYMENT_SIMULATEUR_AUTORISE: "True"
-  PUBLIC_URL: http://localhost
-  FRONTEND_URL: http://localhost
-  CAISSE_URL: http://localhost:81
-  STOCK_URL: http://localhost:82
+  PUBLIC_URL: http://localhost:${HTTP_BACKOFFICE:-80}
+  FRONTEND_URL: http://localhost:${HTTP_BACKOFFICE:-80}
+  CAISSE_URL: http://localhost:${HTTP_CAISSE:-81}
+  STOCK_URL: http://localhost:${HTTP_STOCK:-82}
 
 services:
   mailpit:
@@ -28,7 +28,7 @@ services:
 
   db:
     ports:
-      - "5432:5432"
+      - "5433:5432"   # 5433 cote hote : evite un PostgreSQL local deja sur 5432
 
   backend:
     environment:

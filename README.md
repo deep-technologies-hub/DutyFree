@@ -119,7 +119,7 @@ Ajouter un autre prestataire (Stripe, PayDunya, FedaPay…) : une classe dans `b
 
 ## Démarrage rapide (Docker)
 
-Prérequis : **Docker Desktop** démarré et une connexion Internet pour le premier build.
+Prérequis : **Docker Desktop** démarré et une connexion Internet pour le premier build. (Pile validée de bout en bout : build, migrations, inscription, paiement simulé, emails, console opérateur.)
 
 **Windows, en une commande :**
 ```powershell
@@ -143,7 +143,9 @@ docker compose exec backend python manage.py createsuperuser
 | http://localhost:8025 | **Mailpit** : tous les emails envoyés en local |
 | http://localhost/admin/ | Administration de la plateforme (`plateforme` / `Plateforme-Local-2025` avec le script) |
 
-En local, `docker-compose.override.yml` active automatiquement le **paiement simulé** et **Mailpit**, et expose PostgreSQL sur `localhost:5432`.
+En local, `docker-compose.override.yml` active automatiquement le **paiement simulé** et **Mailpit**, et expose PostgreSQL sur `localhost:5433`.
+
+> **Ports déjà occupés ?** Si 80/81/82 sont pris (un autre projet, un serveur web…), définis `HTTP_BACKOFFICE`, `HTTP_CAISSE`, `HTTP_STOCK` dans `.env` (ex. 8080/8081/8082). Les URLs des emails et des retours de paiement s'ajustent automatiquement. Les adresses du tableau ci-dessus utilisent alors ces ports.
 
 Comptes de la boutique de démonstration (code entreprise **`demo`**) :
 
