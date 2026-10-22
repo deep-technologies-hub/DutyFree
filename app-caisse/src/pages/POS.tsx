@@ -91,7 +91,7 @@ export default function POS() {
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{currentUser?.name || 'Caissier'}</div>
-            <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.14em' }}>{currentUser?.registerId} · DJBC</div>
+            <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.14em' }}>{currentUser?.registerId}</div>
           </div>
           {offlineQueue.length > 0 && <span className="badge badge-amber">{offlineQueue.length} en attente</span>}
         </div>
@@ -281,7 +281,6 @@ export default function POS() {
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }}>Total à payer</div>
                   <div style={{ fontFamily: 'IBM Plex Mono,monospace', fontSize: 28, fontWeight: 700, color: 'var(--accent)', lineHeight: 1 }}>
-                    {console.log('DEBUG POS - activeCurrency:', activeCurrency, 'total:', total, 'fmt result:', fmt(total, activeCurrency))}
                     {fmt(total, activeCurrency)}
                   </div>
                   {activeCurrency !== 'XOF' && (

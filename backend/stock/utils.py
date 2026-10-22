@@ -10,6 +10,10 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
 from datetime import datetime
+from xml.sax.saxutils import escape
+import logging
+
+logger = logging.getLogger(__name__)
 
 def generate_commande_pdf(commande):
     """
@@ -41,6 +45,7 @@ def generate_commande_pdf(commande):
     story = []
     
     # En-tête
+    story.append(Paragraph(escape(commande.organisation.nom), heading_style))
     story.append(Paragraph("BON DE COMMANDE", title_style))
     story.append(Spacer(1, 20))
     
@@ -52,7 +57,7 @@ def generate_commande_pdf(commande):
     
     # Informations du fournisseur
     story.append(Paragraph("FOURNISSEUR", heading_style))
-    story.append(Paragraph(f"Nom: {commande.fournisseur.nom}", styles['Normal']))
+    story.append(Paragraph(f"Nom: {escape(commande.fournisseur.nom)}", styles['Normal']))
     if commande.fournisseur.email:
         story.append(Paragraph(f"Email: {commande.fournisseur.email}", styles['Normal']))
     if commande.fournisseur.telephone:
@@ -66,7 +71,7 @@ def generate_commande_pdf(commande):
     data = [["Produit", "Quantité", "Prix unitaire", "Total"]]
     for ligne in commande.lignes.all():
         data.append([
-            ligne.produit_nom,
+            ligne.produit.nom,
             str(ligne.quantite),
             f"{ligne.prix_unitaire:.2f} {commande.devise}",
             f"{ligne.montant_total:.2f} {commande.devise}"
@@ -95,7 +100,7 @@ def generate_commande_pdf(commande):
     if commande.notes:
         story.append(Spacer(1, 20))
         story.append(Paragraph("NOTES", heading_style))
-        story.append(Paragraph(commande.notes, styles['Normal']))
+        story.append(Paragraph(escape(commande.notes), styles['Normal']))
     
     # Pied de page
     story.append(Spacer(2, 30))
@@ -112,6 +117,8 @@ def envoyer_commande_email(commande):
     """
     Envoie un email au fournisseur avec le PDF de la commande en pièce jointe
     """
+    if not commande.fournisseur.email:
+        return False
     try:
         # Génération du PDF
         pdf_content = generate_commande_pdf(commande)
@@ -135,7 +142,7 @@ Nous vous remercions de votre confiance et restons à votre disposition pour tou
 
 Cordialement,
 Service Achats
-Duty Free
+{commande.organisation.nom}
 """
         
         # Création de l'email
@@ -143,7 +150,8 @@ Duty Free
             subject=subject,
             body=email_body,
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@dutyfree.com'),
-            to=[commande.fournisseur.email]
+            to=[commande.fournisseur.email],
+            reply_to=[commande.organisation.email] if commande.organisation.email else None,
         )
         
         # Ajout de la pièce jointe PDF
@@ -157,6 +165,6 @@ Duty Free
         email.send()
         
         return True
-    except Exception as e:
-        print(f"Erreur envoi email: {e}")
+    except Exception:
+        logger.exception("Erreur envoi email commande %s", commande.numero)
         return False

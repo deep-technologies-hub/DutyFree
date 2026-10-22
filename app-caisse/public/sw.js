@@ -1,5 +1,5 @@
-// ── Service Worker — DJBC Duty Free Caisse ────────────────────────────
-const CACHE_NAME = 'dutyfree-caisse-v1';
+// ── Service Worker — Duty Free Manager Caisse ────────────────────────────
+const CACHE_NAME = 'dutyfree-caisse-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

@@ -2,24 +2,33 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
+from .signals import groupe_organisation
+
 
 class StockConsumer(AsyncWebsocketConsumer):
     """
     WebSocket pour la synchronisation temps réel entre caisses.
-    Groupe 'stock_updates' : tous les clients connectés reçoivent
-    les mises à jour de stock et les nouvelles ventes.
+    Connexion authentifiée (JWT en query string) ; chaque client ne rejoint
+    que le groupe de son organisation.
     """
-    GROUP_NAME = 'stock_updates'
+    group_name = None
 
     async def connect(self):
-        await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+        user = self.scope.get('user')
+        if not user or not user.is_authenticated or not user.organisation_id:
+            await self.close(code=4401)
+            return
+        self.organisation_id = user.organisation_id
+        self.group_name = groupe_organisation(self.organisation_id)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         # Envoyer le stock initial à la connexion
         stock = await self.get_stock_snapshot()
         await self.send(text_data=json.dumps({'type': 'stock_snapshot', 'data': stock}))
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.GROUP_NAME, self.channel_name)
+        if self.group_name:
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def receive(self, text_data):
         """Le client peut envoyer un ping ou demander un refresh."""
@@ -65,7 +74,8 @@ class StockConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_stock_snapshot(self):
         from stock.models import Produit
-        produits = Produit.objects.values('id', 'code', 'nom', 'stock', 'stock_min')
+        produits = Produit.objects.filter(organisation_id=self.organisation_id, actif=True).values(
+            'id', 'code', 'nom', 'stock', 'stock_min')
         return [
             {
                 'id':        p['id'],

@@ -3,6 +3,10 @@ from django.db import migrations
 def create_default_categories(apps, schema_editor):
     """Créer les catégories par défaut"""
     Categorie = apps.get_model('stock', 'Categorie')
+    # SaaS : sur une installation neuve, les catégories sont créées par organisation
+    # à l'inscription. On ne les crée ici que pour reprendre d'anciens produits.
+    if not apps.get_model('stock', 'Produit').objects.exists():
+        return
     
     default_categories = [
         {

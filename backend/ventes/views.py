@@ -5,11 +5,12 @@ from django.db.models import Sum, Count, Avg, F
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from datetime import timedelta
+from tenants.mixins import TenantScopedViewSetMixin
 from .models import Vente, DonneesPassagers
 from .serializers import (VenteSerializer, VenteListSerializer, VenteCreateSerializer,
                            DonneesPassagersSerializer)
 
-class VenteViewSet(viewsets.ModelViewSet):
+class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Vente.objects.select_related('caissier').prefetch_related('lignes__produit', 'paiements').all()
     search_fields = ['numero_ticket', 'caissier__first_name', 'caissier__last_name',
                      'passager_nom', 'vol_reference', 'destination']
@@ -23,25 +24,29 @@ class VenteViewSet(viewsets.ModelViewSet):
         return VenteSerializer
 
     def perform_create(self, serializer):
-        serializer.save(caissier=self.request.user)
+        super().perform_create(serializer, caissier=self.request.user)
 
     @action(detail=False, methods=['post'])
     def sync_offline(self, request):
         """Synchronisation des ventes offline — batch"""
         ventes_data = request.data.get('ventes', [])
         synced, errors = [], []
+        ctx = self.get_serializer_context()
         for v in ventes_data:
+            ticket = v.get('numero_ticket')
             try:
-                # Éviter les doublons
-                if not Vente.objects.filter(numero_ticket=v.get('numero_ticket')).exists():
-                    ser = VenteCreateSerializer(data={**v, 'synced': True})
-                    if ser.is_valid():
-                        ser.save(caissier=request.user)
-                        synced.append(v.get('numero_ticket'))
-                    else:
-                        errors.append({'ticket': v.get('numero_ticket'), 'errors': ser.errors})
+                # Éviter les doublons (idempotence de la resynchronisation)
+                if self.get_queryset().filter(numero_ticket=ticket).exists():
+                    synced.append(ticket)
+                    continue
+                ser = VenteCreateSerializer(data={**v, 'synced': True}, context=ctx)
+                if ser.is_valid():
+                    ser.save(organisation=self.tenant, caissier=request.user)
+                    synced.append(ticket)
+                else:
+                    errors.append({'ticket': ticket, 'errors': ser.errors})
             except Exception as e:
-                errors.append({'ticket': v.get('numero_ticket'), 'error': str(e)})
+                errors.append({'ticket': ticket, 'error': str(e)})
         return Response({'synced': len(synced), 'errors': errors, 'tickets': synced})
 
     @action(detail=False, methods=['get'])
@@ -50,8 +55,9 @@ class VenteViewSet(viewsets.ModelViewSet):
         today = timezone.now().date()
         month_start = today.replace(day=1)
 
-        qs_month = Vente.objects.filter(date_locale__date__gte=month_start, statut='payee')
-        qs_today = Vente.objects.filter(date_locale__date=today, statut='payee')
+        ventes = self.get_queryset().filter(statut='payee')
+        qs_month = ventes.filter(date_locale__date__gte=month_start)
+        qs_today = ventes.filter(date_locale__date=today)
 
         ca_month = qs_month.aggregate(total=Sum('total'))['total'] or 0
         ca_today = qs_today.aggregate(total=Sum('total'))['total'] or 0
@@ -62,27 +68,22 @@ class VenteViewSet(viewsets.ModelViewSet):
         # CA journalier 30j
         thirty_days_ago = today - timedelta(days=30)
         ca_daily = list(
-            Vente.objects.filter(date_locale__date__gte=thirty_days_ago, statut='payee')
+            ventes.filter(date_locale__date__gte=thirty_days_ago)
             .annotate(jour=TruncDate('date_locale'))
             .values('jour')
             .annotate(ca=Sum('total'), tickets=Count('id'))
             .order_by('jour')
         )
 
-        # CA par catégorie
-        from stock.models import Produit
-        ca_by_cat = list(
-            Vente.objects.filter(date_locale__date__gte=month_start, statut='payee')
-            .values('lignes__produit__categorie')
+        # CA par catégorie (clé conservée pour le frontend : contient le nom de la catégorie)
+        ca_by_cat = [
+            {'lignes__produit__categorie': row['lignes__produit__categorie__nom'] or 'Sans catégorie',
+             'ca': row['ca'], 'tickets': row['tickets']}
+            for row in qs_month.values('lignes__produit__categorie__nom')
             .annotate(ca=Sum('lignes__total'), tickets=Count('id', distinct=True))
             .order_by('-ca')
-        )
-        
-        # S'assurer que les noms de catégories correspondent à ceux des produits
-        for cat in ca_by_cat:
-            if cat['lignes__produit__categorie'] and isinstance(cat['lignes__produit__categorie'], str):
-                # Normaliser le nom de catégorie pour correspondre au modèle Categorie
-                cat['lignes__produit__categorie'] = cat['lignes__produit__categorie'].strip().title()
+            if row['ca'] is not None
+        ]
 
         # Par caissier
         ca_by_cashier = list(
@@ -93,8 +94,7 @@ class VenteViewSet(viewsets.ModelViewSet):
 
         # CA par moyen de paiement
         ca_by_payment = list(
-            Vente.objects.filter(date_locale__date__gte=month_start, statut='payee')
-            .values('paiements__methode')
+            qs_month.values('paiements__methode')
             .annotate(amount=Sum('paiements__montant_xof'))
             .order_by('-amount')
         )
@@ -118,9 +118,8 @@ class VenteViewSet(viewsets.ModelViewSet):
     def taux_capture(self, request):
         """Taux de capture mensuel = tickets / passagers"""
         results = []
-        for dp in DonneesPassagers.objects.order_by('-annee', '-mois'):
-            from django.db.models import Q
-            tickets = Vente.objects.filter(
+        for dp in DonneesPassagers.objects.filter(organisation=self.tenant).order_by('-annee', '-mois'):
+            tickets = self.get_queryset().filter(
                 date_locale__year=dp.annee,
                 date_locale__month=dp.mois,
                 statut='payee'
@@ -134,9 +133,9 @@ class VenteViewSet(viewsets.ModelViewSet):
         return Response(results)
 
 
-class DonneesPassagersViewSet(viewsets.ModelViewSet):
+class DonneesPassagersViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = DonneesPassagers.objects.all()
     serializer_class = DonneesPassagersSerializer
 
     def perform_create(self, serializer):
-        serializer.save(saisie_par=self.request.user)
+        super().perform_create(serializer, saisie_par=self.request.user)

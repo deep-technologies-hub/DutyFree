@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { tenantStorage } from '../api';
 import { Eye, EyeOff, Package, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const { login, loading, error } = useAuthStore();
   const isLoading = loading;
+  const [organisation, setOrganisation] = useState(tenantStorage.get());
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -17,7 +19,9 @@ export default function LoginPage() {
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (username && password) login(username, password);
+    if (!organisation || !username || !password) return;
+    tenantStorage.set(organisation);
+    login(username, password);
   };
 
   return (
@@ -33,7 +37,7 @@ export default function LoginPage() {
             <Package size={18} color="#0C0D11" strokeWidth={2.5} />
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>DJBC Duty Free</div>
+            <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>Duty Free Manager</div>
             <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.18em' }}>Stock Management</div>
           </div>
         </div>
@@ -44,12 +48,12 @@ export default function LoginPage() {
             Contrôle & Inventaire
           </div>
           <h1 style={{ fontFamily: 'Playfair Display,Georgia,serif', fontSize: 46, fontWeight: 500, color: 'var(--text)', lineHeight: 1.12, letterSpacing: '-0.02em', marginBottom: 18 }}>
-            Aéroport<br />
-            <em style={{ color: 'var(--accent)', fontStyle: 'italic' }}>International</em><br />
-            Ouagadougou
+            Votre stock<br />
+            <em style={{ color: 'var(--accent)', fontStyle: 'italic' }}>sous contrôle</em><br />
+            en temps réel
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.65, maxWidth: 360 }}>
-            Gestion rigoureuse des flux de marchandises, suivi des sommiers douaniers et optimisation des approvisionnements pour le Duty Free DJBC.
+            Gestion rigoureuse des flux de marchandises, suivi des sommiers douaniers et optimisation des approvisionnements.
           </p>
         </div>
 
@@ -77,13 +81,24 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
+            <label className="label-xs" style={{ display: 'block', marginBottom: 6 }}>Code entreprise</label>
+            <input
+              type="text"
+              value={organisation}
+              onChange={e => setOrganisation(e.target.value)}
+              placeholder="ex : ma-boutique"
+              autoFocus={!organisation}
+              autoComplete="organization"
+            />
+          </div>
+          <div>
             <label className="label-xs" style={{ display: 'block', marginBottom: 6 }}>Identifiant</label>
             <input
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
               placeholder="Nom d'utilisateur"
-              autoFocus
+              autoFocus={!!organisation}
               autoComplete="username"
             />
           </div>
@@ -109,7 +124,7 @@ export default function LoginPage() {
           </div>
           <button
             type="submit"
-            disabled={isLoading || !username || !password}
+            disabled={isLoading || !organisation || !username || !password}
             className="btn btn-primary btn-lg"
             style={{ marginTop: 6, justifyContent: 'center', width: '100%' }}
           >
@@ -119,7 +134,7 @@ export default function LoginPage() {
 
         <div style={{ marginTop: 48, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
           <p style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.6 }}>
-            Accès réservé aux gestionnaires de stock DJBC.<br />Le contrôle des inventaires est soumis à la réglementation douanière.
+            Accès réservé aux gestionnaires de stock.<br />Le code entreprise est fourni par l'administrateur de votre boutique.
           </p>
         </div>
       </div>

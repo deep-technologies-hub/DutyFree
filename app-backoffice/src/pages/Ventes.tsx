@@ -130,7 +130,7 @@ export default function Ventes() {
                   </td>
                   <td style={{ fontWeight: 500, color: 'var(--text)', fontSize: 12 }}>{sale.numero_caisse}</td>
                   <td style={{ textAlign: 'center' }}>
-                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: 'var(--text-2)' }}>{sale.lignes?.length || 0}</span>
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: 'var(--text-2)' }}>{sale.nb_articles ?? 0}</span>
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>

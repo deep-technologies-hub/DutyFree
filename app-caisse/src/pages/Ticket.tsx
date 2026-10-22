@@ -3,6 +3,7 @@ import { useCaisseStore } from '../store/caisseStore';
 import { Printer, ShoppingBag, Check, RotateCcw, Usb } from 'lucide-react';
 import type { Sale } from '../types';
 import { escposPrinter, buildTicketHtml } from '../utils/escpos';
+import { useBoutique } from '../hooks/useBoutique';
 
 const fmt = (n: number, c: string) => {
   if (c === 'EUR') return `€${n.toFixed(2)}`;
@@ -12,6 +13,8 @@ const fmt = (n: number, c: string) => {
 
 export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => void }) {
   const { currentUser } = useCaisseStore();
+  const boutique = useBoutique();
+  const nomBoutique = boutique?.nom_boutique || 'DUTY FREE';
   const printRef = useRef<HTMLDivElement>(null);
   const [usbConnecting, setUsbConnecting] = useState(false);
   const [usbConnected, setUsbConnected] = useState(escposPrinter.isConnected());
@@ -28,6 +31,13 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
       passengerName: sale.passengerName,
       flightRef: sale.flightRef,
       destination: sale.destination,
+    }, {
+      nom: nomBoutique,
+      adresse: boutique?.adresse,
+      nif: boutique?.nif,
+      msg1: boutique?.msg_accueil_1,
+      msg2: boutique?.msg_accueil_2,
+      msgPolitesse: boutique?.msg_politesse,
     });
     escposPrinter.printFallback(html);
   };
@@ -45,11 +55,11 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
     const fmtN = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
     escposPrinter
       .init()
-      .align('center').bold(true).text('DUTY FREE\n').bold(false)
-      .text('Aeroport Int. de Ouagadougou\n')
-      .text('DJBC - Zone Transit International\n')
+      .align('center').bold(true).text(`${nomBoutique}\n`).bold(false)
+      .text(boutique?.adresse ? `${boutique.adresse}\n` : '')
+      .text(boutique?.nif ? `NIF : ${boutique.nif}\n` : '')
       .separator()
-      .text('Bienvenue - Welcome\n')
+      .text(`${boutique?.msg_accueil_1 || 'Bienvenue - Welcome'}\n`)
       .separator()
       .align('left')
       .line(`Ticket : ${sale.id}`)
@@ -63,7 +73,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
       .separator()
       .bold(true).row('TOTAL', `${fmtN(sale.total)} ${sale.currency}`).bold(false)
       .separator()
-      .align('center').text('Merci. Bon voyage.\n')
+      .align('center').text(`${boutique?.msg_politesse || 'Merci. Bon voyage.'}\n`)
       .feed(4).cut();
     await escposPrinter.print();
   };
@@ -94,10 +104,10 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
               <div style={{ width: 28, height: 28, background: 'var(--accent)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ShoppingBag size={14} color="var(--bg)" />
               </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>DUTY FREE DJBC</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{nomBoutique.toUpperCase()}</div>
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.15em' }}>Aéroport International de Ouagadougou</div>
-            <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: 2 }}>Direction Générale des Douanes — Burkina Faso</div>
+            {boutique?.adresse && <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.15em' }}>{boutique.adresse}</div>}
+            {boutique?.nif && <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: 2 }}>NIF : {boutique.nif}</div>}
           </div>
 
           {/* Passager */}

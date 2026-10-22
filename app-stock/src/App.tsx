@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -16,7 +16,13 @@ import { useStockStore } from './store/stockStore';
 
 function ProtectedApp() {
   const { fetchAll, isOffline } = useStockStore();
+  const [abonnementInactif, setAbonnementInactif] = useState(false);
   useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    const onInactive = () => setAbonnementInactif(true);
+    window.addEventListener('subscription:inactive', onInactive);
+    return () => window.removeEventListener('subscription:inactive', onInactive);
+  }, []);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -27,6 +33,11 @@ function ProtectedApp() {
       )}
       <Sidebar />
       <main style={{ flex: 1, overflow: 'auto', paddingTop: isOffline ? 32 : 0 }}>
+        {abonnementInactif && (
+          <div style={{ background: 'var(--c-down-dim)', borderBottom: '1px solid var(--c-down-bd)', color: 'var(--c-down)', padding: '8px 24px', fontSize: 12, fontWeight: 600 }}>
+            Abonnement expiré ou suspendu : lecture seule. L'administrateur peut le renouveler depuis le backoffice (Abonnement).
+          </div>
+        )}
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/produits" element={<Produits />} />
@@ -44,9 +55,14 @@ function ProtectedApp() {
 }
 
 export default function App() {
-  const { isAuthenticated, checkAuth } = useAuthStore();
+  const { isAuthenticated, checkAuth, logout } = useAuthStore();
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
+  // Session expirée (refresh impossible) → retour à l'écran de connexion
+  useEffect(() => {
+    window.addEventListener('auth:logout', logout);
+    return () => window.removeEventListener('auth:logout', logout);
+  }, [logout]);
 
   return (
     <BrowserRouter>

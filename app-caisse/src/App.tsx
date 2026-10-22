@@ -1,10 +1,22 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useCaisseStore } from './store/caisseStore';
 import Login from './pages/Login';
 import POS from './pages/POS';
 
 export default function App() {
-  const { currentUser, setOnline, isOnline, offlineQueue, syncOfflineQueue, loadProducts } = useCaisseStore();
+  const { currentUser, setOnline, isOnline, offlineQueue, syncOfflineQueue, loadProducts, logout } = useCaisseStore();
+  const [abonnementInactif, setAbonnementInactif] = useState(false);
+
+  // Session expirée → écran de connexion ; abonnement expiré → bandeau (les ventes restent en file locale)
+  useEffect(() => {
+    const onInactive = () => setAbonnementInactif(true);
+    window.addEventListener('auth:logout', logout);
+    window.addEventListener('subscription:inactive', onInactive);
+    return () => {
+      window.removeEventListener('auth:logout', logout);
+      window.removeEventListener('subscription:inactive', onInactive);
+    };
+  }, [logout]);
 
   useEffect(() => {
     const on = () => { setOnline(true); syncOfflineQueue(); };
@@ -25,5 +37,15 @@ export default function App() {
     return () => clearInterval(timer);
   }, [isOnline, offlineQueue.length, syncOfflineQueue]);
 
-  return currentUser ? <POS /> : <Login />;
+  if (!currentUser) return <Login />;
+  return (
+    <>
+      {abonnementInactif && (
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 999, background: 'var(--c-down)', color: '#fff', padding: '8px 16px', fontSize: 12, fontWeight: 700, textAlign: 'center' }}>
+          Abonnement expiré : les ventes sont conservées sur ce poste et seront transmises après renouvellement (backoffice → Abonnement).
+        </div>
+      )}
+      <POS />
+    </>
+  );
 }

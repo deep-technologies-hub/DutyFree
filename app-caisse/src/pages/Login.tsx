@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useCaisseStore } from '../store/caisseStore';
+import { tenantStorage } from '../api';
 import { Delete, ShoppingCart } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 interface User {
   id: number;
@@ -12,33 +15,51 @@ interface User {
 
 export default function Login() {
   const { loginWithApi } = useCaisseStore();
+  // Code entreprise (organisation SaaS) : saisi une fois, mémorisé sur le poste de caisse
+  const [organisation, setOrganisation] = useState(tenantStorage.get());
+  const [orgInput, setOrgInput] = useState(tenantStorage.get());
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!organisation);
   const [sel, setSel] = useState<User | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    // Load cashiers from API (public endpoint for login screen)
+    if (!organisation) return;
+    // Liste publique des caissiers de l'organisation pour l'écran de connexion
     const loadCashiers = async () => {
+      setLoading(true);
+      setError('');
       try {
-        // Use direct fetch without auth for public cashiers list
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/utilisateurs/caissiers/`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch cashiers');
-        }
-        const data = await response.json();
-        setUsers(data);
+        const response = await fetch(`${API_URL}/utilisateurs/caissiers/?organisation=${encodeURIComponent(organisation)}`);
+        if (!response.ok) throw new Error('Failed to fetch cashiers');
+        setUsers(await response.json());
       } catch (err) {
         console.error('Failed to load cashiers:', err);
-        // Fallback to empty array - user will need to enter credentials manually
+        setUsers([]);
+        setError('Impossible de charger les caissiers (hors ligne ?)');
       } finally {
         setLoading(false);
       }
     };
     loadCashiers();
-  }, []);
+  }, [organisation]);
+
+  const validerOrganisation = () => {
+    const slug = orgInput.trim().toLowerCase();
+    if (!slug) return;
+    tenantStorage.set(slug);
+    setOrganisation(slug);
+  };
+
+  const changerOrganisation = () => {
+    setOrganisation('');
+    setUsers([]);
+    setSel(null);
+    setPin('');
+    setError('');
+  };
 
   const add = (n: string) => { if (pin.length < 6) setPin(p => p + n); };
   const del = () => setPin(p => p.slice(0, -1));
@@ -57,19 +78,30 @@ export default function Login() {
         <div style={{ width: 44, height: 44, background: 'var(--accent)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
           <ShoppingCart size={20} color="#0C0D11" />
         </div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>Duty Free DJBC</div>
-        <div className="section-label" style={{ marginTop: 3 }}>Caisse · Ouagadougou</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>Duty Free Manager</div>
+        <div className="section-label" style={{ marginTop: 3 }}>Caisse{organisation ? ` · ${organisation}` : ''}</div>
       </div>
 
       <div className="card" style={{ width: '100%', maxWidth: 380, padding: '24px 22px' }}>
-        {loading ? (
+        {!organisation ? (
+          <form onSubmit={e => { e.preventDefault(); validerOrganisation(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'center', fontWeight: 500 }}>
+              Saisissez le code entreprise de votre boutique
+            </div>
+            <input type="text" value={orgInput} onChange={e => setOrgInput(e.target.value)} placeholder="ex : ma-boutique" autoFocus />
+            <button type="submit" disabled={!orgInput.trim()}
+              style={{ padding: '12px', background: orgInput.trim() ? 'var(--accent)' : 'var(--surface-2)', border: 'none', borderRadius: 6, color: orgInput.trim() ? '#0C0D11' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: orgInput.trim() ? 'pointer' : 'not-allowed' }}>
+              Continuer
+            </button>
+          </form>
+        ) : loading ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-3)', fontSize: 12 }}>
             Chargement des caissiers...
           </div>
         ) : !sel ? (
           <>
             <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 14, textAlign: 'center', fontWeight: 500 }}>
-              {users.length > 0 ? 'Sélectionnez votre profil' : 'Aucun caissier disponible'}
+              {users.length > 0 ? 'Sélectionnez votre profil' : (error || 'Aucun caissier pour ce code entreprise')}
             </div>
             {users.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -140,7 +172,11 @@ export default function Login() {
       </div>
 
       <div style={{ marginTop: 20, fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>
-        DJBC — Direction Générale des Douanes · Burkina Faso
+        {organisation && (
+          <button onClick={changerOrganisation} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-3)', textDecoration: 'underline' }}>
+            Changer de code entreprise
+          </button>
+        )}
       </div>
     </div>
   );

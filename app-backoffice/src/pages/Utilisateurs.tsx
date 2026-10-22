@@ -125,7 +125,7 @@ export function UtilisateursPage() {
       setCreateModal(false);
       setCreateForm(emptyCreate());
       flash('Utilisateur créé avec succès');
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erreur serveur'); }
+    } catch (e: unknown) { setError((e as { message?: string })?.message || 'Erreur serveur'); }
     finally { setSaving(false); }
   };
 
@@ -137,7 +137,7 @@ export function UtilisateursPage() {
       await loadUsers();
       setEditModal(null);
       flash('Utilisateur mis à jour');
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erreur serveur'); }
+    } catch (e: unknown) { setError((e as { message?: string })?.message || 'Erreur serveur'); }
     finally { setSaving(false); }
   };
 
@@ -156,7 +156,7 @@ export function UtilisateursPage() {
       await utilisateursApi.resetPin(pinModal.id, newPin);
       setPinModal(null); setNewPin('');
       flash('PIN réinitialisé');
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erreur'); }
+    } catch (e: unknown) { setError((e as { message?: string })?.message || 'Erreur'); }
     finally { setSaving(false); }
   };
 
@@ -167,7 +167,7 @@ export function UtilisateursPage() {
       await utilisateursApi.resetPassword(pwdModal.id, newPwd);
       setPwdModal(null); setNewPwd('');
       flash('Mot de passe réinitialisé');
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erreur'); }
+    } catch (e: unknown) { setError((e as { message?: string })?.message || 'Erreur'); }
     finally { setSaving(false); }
   };
 
