@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { ventesApi, authApi, authStorage } from '../api';
-import type { DashboardData, VenteListItem, TauxCapture } from '../api';
+import type { DashboardData, VenteListItem, TauxCapture, Me } from '../api';
 
 interface BackofficeStore {
   // Auth
-  user: { id: number; username: string; full_name: string; role: string } | null;
+  user: Me | null;
   isAuthenticated: boolean;
   authLoading: boolean;
   authError: string | null;

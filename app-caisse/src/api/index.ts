@@ -7,9 +7,24 @@
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
+/** URL WebSocket authentifiée. Sans VITE_WS_URL, on utilise l'hôte courant (derrière nginx). */
+export function wsUrl(path: string): string {
+  const base = import.meta.env.VITE_WS_URL
+    || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+  const token = authStorage.getAccess();
+  return `${base}${path}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+}
+
 // ── Storage helpers ──────────────────────────────────────────────────
 const TOKEN_KEY = 'df_access';
 const REFRESH_KEY = 'df_refresh';
+const ORG_KEY = 'df_org';
+
+/** Code entreprise (organisation SaaS) mémorisé sur ce poste. */
+export const tenantStorage = {
+  get: () => localStorage.getItem(ORG_KEY) || '',
+  set: (slug: string) => localStorage.setItem(ORG_KEY, slug.trim().toLowerCase()),
+};
 
 export const authStorage = {
   getAccess: () => localStorage.getItem(TOKEN_KEY),
@@ -25,14 +40,52 @@ export const authStorage = {
 };
 
 // ── Types ────────────────────────────────────────────────────────────
+export interface OrganisationResume {
+  id: number;
+  nom: string;
+  slug: string;
+  plan: string;
+  statut: 'essai' | 'actif' | 'expire' | 'suspendu';
+  est_active: boolean;
+  jours_restants: number | null;
+}
+
+export interface Me {
+  id: number;
+  username: string;
+  full_name: string;
+  role: string;
+  register_id: string;
+  email?: string;
+  organisation: OrganisationResume | null;
+}
+
 export interface ApiError {
   status: number;
   message: string;
   detail?: Record<string, unknown>;
 }
 
+/** Premier message d'erreur de validation DRF ({champ: ["message"]}) */
+function firstFieldError(body: Record<string, unknown>): string | undefined {
+  for (const [field, value] of Object.entries(body)) {
+    const msg = Array.isArray(value) ? value[0] : value;
+    if (typeof msg === 'string') return field === 'non_field_errors' ? msg : `${field} : ${msg}`;
+  }
+  return undefined;
+}
+
 // ── Fetch wrapper avec JWT ───────────────────────────────────────────
-async function refreshTokens(): Promise<string | null> {
+// Les refresh tokens sont à usage unique : un seul renouvellement à la fois, partagé
+// par toutes les requêtes en attente.
+let refreshEnCours: Promise<string | null> | null = null;
+
+function refreshTokens(): Promise<string | null> {
+  if (!refreshEnCours) refreshEnCours = doRefresh().finally(() => { refreshEnCours = null; });
+  return refreshEnCours;
+}
+
+async function doRefresh(): Promise<string | null> {
   const refresh = authStorage.getRefresh();
   if (!refresh) return null;
   try {
@@ -41,9 +94,14 @@ async function refreshTokens(): Promise<string | null> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh }),
     });
-    if (!res.ok) { authStorage.clear(); return null; }
+    if (!res.ok) {
+      // Un autre onglet a peut-être déjà renouvelé la session : on reprend ses jetons.
+      if (authStorage.getRefresh() !== refresh) return authStorage.getAccess();
+      authStorage.clear();
+      return null;
+    }
     const data = await res.json();
-    authStorage.set(data.access, refresh);
+    authStorage.set(data.access, data.refresh ?? refresh);
     return data.access;
   } catch {
     return null;
@@ -75,9 +133,13 @@ async function apiFetch<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    // Abonnement expiré / suspendu : l'application passe en lecture seule
+    if (res.status === 402) {
+      window.dispatchEvent(new CustomEvent('subscription:inactive', { detail: body.detail }));
+    }
     throw {
       status: res.status,
-      message: body.detail || body.message || `Erreur ${res.status}`,
+      message: body.detail || body.message || firstFieldError(body) || `Erreur ${res.status}`,
       detail: body,
     } as ApiError;
   }
@@ -104,13 +166,23 @@ export const authApi = {
   login: async (username: string, password: string) => {
     const data = await api.post<{ access: string; refresh: string }>(
       '/auth/token/',
-      { username, password }
+      { organisation: tenantStorage.get(), username, password }
     );
     authStorage.set(data.access, data.refresh);
     return data;
   },
-  logout: () => authStorage.clear(),
-  me: () => api.get<{ id: number; username: string; full_name: string; role: string; register_id: string }>('/utilisateurs/me/'),
+  logout: () => {
+    // Révoque le refresh token côté serveur (best effort, n'attend pas la réponse)
+    const refresh = authStorage.getRefresh();
+    if (refresh) {
+      fetch(`${BASE_URL}/auth/logout/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh }), keepalive: true,
+      }).catch(() => {});
+    }
+    authStorage.clear();
+  },
+  me: () => api.get<Me>('/utilisateurs/me/'),
 };
 
 // ── Stock ─────────────────────────────────────────────────────────────
@@ -148,7 +220,7 @@ export const ventesApi = {
   create: (data: VentePayload) => api.post<VenteResponse>('/ventes/', data),
   list: (params = '') => api.get<PaginatedResponse<VenteListItem>>(`/ventes/${params}`),
   syncOffline: (ventes: VentePayload[]) =>
-    api.post<{ synced: number; errors: unknown[] }>('/ventes/sync_offline/', { ventes }),
+    api.post<{ synced: number; errors: unknown[]; tickets: string[] }>('/ventes/sync_offline/', { ventes }),
   dashboard: () => api.get<DashboardData>('/ventes/dashboard/'),
   tauxCapture: () => api.get<TauxCapture[]>('/ventes/taux_capture/'),
   passagers: {

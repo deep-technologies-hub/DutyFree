@@ -104,27 +104,29 @@ interface TicketSale {
   pointsGagnes?: number;
 }
 
-export function buildTicketHtml(sale: TicketSale, cfg?: { msg1?: string; msg2?: string; msgPolitesse?: string }): string {
+const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+export function buildTicketHtml(sale: TicketSale, cfg?: { nom?: string; adresse?: string; nif?: string; msg1?: string; msg2?: string; msgPolitesse?: string }): string {
   const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
   const d = new Date(sale.createdAt);
   const dateStr = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
   let html = `
-    <div class="c b big">DUTY FREE</div>
-    <div class="c">Aéroport Int. de Ouagadougou</div>
-    <div class="c">DJBC · Zone Transit International</div>
+    <div class="c b big">${esc(cfg?.nom || 'DUTY FREE')}</div>
+    ${cfg?.adresse ? `<div class="c">${esc(cfg.adresse)}</div>` : ''}
+    ${cfg?.nif ? `<div class="c">NIF : ${esc(cfg.nif)}</div>` : ''}
     <hr>
-    <div class="c b">${cfg?.msg1 || 'Bienvenue — Welcome'}</div>
-    <div class="c">${cfg?.msg2 || 'Zone de transit international'}</div>
+    <div class="c b">${esc(cfg?.msg1 || 'Bienvenue — Welcome')}</div>
+    <div class="c">${esc(cfg?.msg2 || 'Zone de transit international')}</div>
     <hr>
     <div>Ticket : <b>${sale.numero_ticket || 'N/A'}</b></div>
     <div>Date : ${dateStr}</div>
-    ${sale.passengerName ? `<div>Passager : ${sale.passengerName}</div>` : ''}
-    ${sale.flightRef ? `<div>Vol : ${sale.flightRef}${sale.destination ? ' → ' + sale.destination : ''}</div>` : ''}
+    ${sale.passengerName ? `<div>Passager : ${esc(sale.passengerName)}</div>` : ''}
+    ${sale.flightRef ? `<div>Vol : ${esc(sale.flightRef)}${sale.destination ? ' → ' + esc(sale.destination) : ''}</div>` : ''}
     <hr>`;
 
   sale.items.forEach(item => {
-    html += `<div>${item.name.substring(0, 32)}</div>`;
+    html += `<div>${esc(item.name.substring(0, 32))}</div>`;
     html += `<div class="row"><span>  ${item.qty} x ${fmt(item.price)} ${item.currency}</span><span class="b">${fmt(item.qty * item.price)}</span></div>`;
   });
 
@@ -142,7 +144,7 @@ export function buildTicketHtml(sale: TicketSale, cfg?: { msg1?: string; msg2?: 
     if (sale.pointsGagnes) html += `<div class="c b">+${sale.pointsGagnes} points gagnés</div>`;
   }
 
-  html += `<hr><div class="c">${cfg?.msgPolitesse || 'Merci. Bon voyage — Thank you. Safe travels.'}</div>`;
+  html += `<hr><div class="c">${esc(cfg?.msgPolitesse || 'Merci. Bon voyage — Thank you. Safe travels.')}</div>`;
   html += `<br><div class="c" style="font-size:10px">Conservez ce ticket · Keep this receipt</div>`;
   return html;
 }

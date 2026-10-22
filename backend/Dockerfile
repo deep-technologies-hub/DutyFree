@@ -1,24 +1,28 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install system dependencies for Postgres and building packages
-RUN apt-get update && apt-get install -y \
-    libpq-dev gcc netcat-openbsd \
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-# Ensure psycopg2-binary and daphne are installed
-RUN grep -q psycopg2 requirements.txt || echo "psycopg2-binary>=2.9.9" >> requirements.txt
-RUN grep -q daphne requirements.txt || echo "daphne>=4.0.0" >> requirements.txt
-
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Nginx needs access to these via volume or collectstatic
-RUN mkdir -p /app/staticfiles /app/media
+RUN mkdir -p /app/staticfiles /app/media \
+    && useradd --create-home --uid 1000 app \
+    && chown -R app:app /app
+USER app
 
 EXPOSE 8000
 
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8000/api/health/ || exit 1
+
+COPY --chown=app:app entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["sh", "/entrypoint.sh"]
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "--proxy-headers", "backend.asgi:application"]

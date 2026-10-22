@@ -50,7 +50,7 @@ export default function Dashboard() {
       {/* Header */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:22}}>
         <div>
-          <div className="section-label" style={{marginBottom:4}}>Stock · DJBC Duty Free</div>
+          <div className="section-label" style={{marginBottom:4}}>Stock</div>
           <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:24,fontWeight:500,color:'var(--text)',letterSpacing:'-0.01em'}}>Tableau de bord</h1>
         </div>
         <button className="btn btn-ghost btn-sm" style={{gap:6}} onClick={()=>fetchProducts()}>

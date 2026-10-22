@@ -1,95 +1,115 @@
-from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
+from django.contrib.auth.models import update_last_login
+
+from tenants.models import Organisation
+from tenants.serializers import OrganisationResumeSerializer
 from .models import Utilisateur
 
+
+def tokens_pour(user):
+    refresh = CustomTokenObtainPairSerializer.get_token(user)
+    return {'refresh': str(refresh), 'access': str(refresh.access_token)}
+
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Permet de s'authentifier soit avec password soit avec PIN (caissiers)"""
+    """
+    Connexion SaaS : code entreprise (`organisation`) + identifiant (ou n° de caisse)
+    + mot de passe (ou PIN pour les caissiers).
+    """
+    organisation = serializers.CharField(required=False, allow_blank=True)
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['role'] = user.role
+        token['org'] = user.organisation.slug if user.organisation_id else None
+        return token
+
     def validate(self, attrs):
-        username = attrs.get('username')
-        password = attrs.get('password')
-        user = None
+        slug = (attrs.get('organisation') or '').strip().lower()
+        if slug:
+            org = Organisation.objects.filter(slug=slug).first()
+            if org is None:
+                raise AuthenticationFailed('Code entreprise inconnu', code='unknown_organisation')
+            if org.statut == 'suspendu':
+                raise AuthenticationFailed('Ce compte entreprise est suspendu. Contactez le support.',
+                                           code='organisation_suspended')
 
-        print(f"DEBUG: Tentative auth - username: {username}, password: {'*' * len(password) if password else 'None'}")
+        user = authenticate(self.context.get('request'), username=attrs.get('username'),
+                            password=attrs.get('password'), organisation=slug or None)
+        if user is None:
+            raise AuthenticationFailed('Identifiants ou PIN incorrects', code='invalid_credentials')
 
-        # 1. Tentative authentification classique (username/password)
-        try:
-            from django.contrib.auth import authenticate
-            user = authenticate(username=username, password=password)
-            print(f"DEBUG: Auth classique résultat: {user}")
-        except Exception as e:
-            print(f"DEBUG: Exception auth classique: {e}")
-            pass
-
-        # 2. Tentative via PIN ou Password avec register_id si échec username
-        if not user:
-            from django.db.models import Q
-            try:
-                # Chercher par username OU par register_id (en ignorant la casse et les tirets)
-                # Le frontend envoie 'caisse01', on compare avec 'CAISSE-01'
-                normalized_username = username.replace('-', '').replace('_', '').upper()
-                print(f"DEBUG: Normalized username: {normalized_username}")
-                
-                user_obj = Utilisateur.objects.filter(
-                    Q(username__iexact=username) | 
-                    Q(register_id__iexact=username) |
-                    Q(register_id__iexact=username.replace('-', '').replace('_', '').upper()) |
-                    Q(register_id__iexact=f"CAISSE-{normalized_username.replace('CAISSE', '')}")
-                ).first()
-                
-                print(f"DEBUG: User trouvé: {user_obj}")
-                print(f"DEBUG: User actif: {user_obj.is_active if user_obj else 'None'}")
-                print(f"DEBUG: PIN de l'user: {user_obj.pin if user_obj else 'None'}")
-
-                if user_obj and user_obj.is_active:
-                    # Vérifier soit le password soit le PIN
-                    if user_obj.pin == password or user_obj.check_password(password):
-                        user = user_obj
-                        print(f"DEBUG: Auth réussie via PIN/password")
-                    else:
-                        print(f"DEBUG: PIN/password incorrect")
-            except Exception as e:
-                print(f"DEBUG: Exception recherche user: {e}")
-                pass
-
-        if user:
-            # Générer le token JWT
-            refresh = self.get_token(user)
-            return {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-            }
-
-        # Utiliser AuthenticationFailed pour renvoyer un 401 propre
-        from rest_framework_simplejwt.exceptions import AuthenticationFailed
-        raise AuthenticationFailed('Identifiants ou PIN incorrects')
+        if jwt_settings.UPDATE_LAST_LOGIN:
+            update_last_login(None, user)
+        return tokens_pour(user)
 
 
 class UtilisateurSerializer(serializers.ModelSerializer):
+    """Lecture + mise à jour. `password` et `pin` sont en écriture seule et hachés."""
     full_name = serializers.ReadOnlyField()
+    password = serializers.CharField(write_only=True, required=False, min_length=8)
+    pin = serializers.RegexField(r'^\d{4,6}$', write_only=True, required=False, allow_blank=True,
+                                 error_messages={'invalid': 'Le PIN doit contenir 4 à 6 chiffres.'})
 
     class Meta:
         model = Utilisateur
-        fields = ['id', 'username', 'first_name', 'last_name', 'full_name',
-                  'email', 'role', 'register_id', 'phone', 'is_active', 'last_login']
+        fields = ['id', 'username', 'first_name', 'last_name', 'full_name', 'email', 'role',
+                  'register_id', 'phone', 'is_active', 'last_login', 'password', 'pin']
         read_only_fields = ['last_login']
 
-class UtilisateurCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Utilisateur
-        fields = ['username', 'first_name', 'last_name', 'email',
-                  'role', 'register_id', 'pin', 'phone', 'password']
-        extra_kwargs = {'password': {'write_only': True}}
+    def validate_username(self, value):
+        org = self.context['request'].user.organisation
+        qs = Utilisateur.objects.filter(organisation=org, username__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Cet identifiant est déjà utilisé dans votre organisation.")
+        return value
+
+    def validate_password(self, value):
+        validate_password(value, self.instance)
+        return value
+
+    def _apply_secrets(self, user, password, pin):
+        if password:
+            user.set_password(password)
+        if pin is not None:
+            user.set_pin(pin)
 
     def create(self, validated_data):
-        password = validated_data.pop('password')
+        password = validated_data.pop('password', None)
+        pin = validated_data.pop('pin', None)
+        if not password:
+            raise serializers.ValidationError({'password': 'Mot de passe requis.'})
         user = Utilisateur(**validated_data)
-        user.set_password(password)
+        self._apply_secrets(user, password, pin)
         user.save()
         return user
 
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        pin = validated_data.pop('pin', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        self._apply_secrets(instance, password, pin)
+        instance.save()
+        return instance
+
+
+# Conservé pour compatibilité des imports existants.
+UtilisateurCreateSerializer = UtilisateurSerializer
+
+
 class MeSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
+    organisation = OrganisationResumeSerializer(read_only=True)
+
     class Meta:
         model = Utilisateur
-        fields = ['id', 'username', 'full_name', 'role', 'register_id', 'email']
+        fields = ['id', 'username', 'full_name', 'role', 'register_id', 'email', 'organisation']

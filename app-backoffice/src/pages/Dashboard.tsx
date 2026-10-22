@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBackofficeStore } from '../store/backofficeStore';
-import { ventesApi } from '../api';
+import { ventesApi, wsUrl } from '../api';
 import { TrendingUp, TrendingDown, Minus, WifiOff, Zap, Download, Users } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)} M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)} K` : fmt(n);
 const G = ['#EA580C', '#14B8A6', '#F59E0B', '#3B82F6', '#8B5CF6', '#E53E3E'];
-
-const WS_URL = (import.meta.env.VITE_WS_URL || 'ws://localhost:8000') + '/ws/stock/';
 
 function useWS() {
   const [status, setStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
@@ -21,7 +19,7 @@ function useWS() {
     const go = () => {
       if (!mounted) return;
       try {
-        const s = new WebSocket(WS_URL); ws.current = s;
+        const s = new WebSocket(wsUrl('/ws/stock/')); ws.current = s;
         s.onopen = () => { if (mounted) setStatus('live'); else s.close(); };
         s.onmessage = ({ data }) => { 
           if (!mounted) return;

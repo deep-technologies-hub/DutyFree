@@ -1,14 +1,24 @@
 from django.db import models
 from django.utils import timezone
 
+from tenants.models import TenantModel
 
-class CarteFidelite(models.Model):
+
+def generer_numero_carte(organisation_id):
+    import secrets
+    while True:
+        numero = f"DF{secrets.randbelow(10**8):08d}"
+        if not CarteFidelite.objects.filter(organisation_id=organisation_id, numero=numero).exists():
+            return numero
+
+
+class CarteFidelite(TenantModel):
     NIVEAUX = [
         ('bronze', 'Bronze'),
         ('silver', 'Silver'),
         ('gold', 'Gold'),
     ]
-    numero = models.CharField(max_length=20, unique=True, db_index=True)
+    numero = models.CharField(max_length=20, db_index=True)
     nom = models.CharField(max_length=200)
     prenom = models.CharField(max_length=200)
     email = models.EmailField(blank=True)
@@ -23,13 +33,16 @@ class CarteFidelite(models.Model):
     class Meta:
         verbose_name = 'Carte de fidélité'
         ordering = ['-points']
+        constraints = [
+            models.UniqueConstraint(fields=['organisation', 'numero'], name='uniq_carte_numero'),
+        ]
 
     def __str__(self):
         return f'{self.numero} — {self.nom} {self.prenom} ({self.niveau})'
 
     def update_niveau(self):
         from configuration.models import Configuration
-        cfg = Configuration.get()
+        cfg = Configuration.get(self.organisation)
         p = float(self.points)
         if p >= cfg.seuil_fidelite_gold:
             self.niveau = 'gold'
@@ -40,11 +53,9 @@ class CarteFidelite(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.numero:
-            last = CarteFidelite.objects.order_by('-id').first()
-            next_id = (last.id + 1) if last else 1
-            self.numero = f'DF{next_id:08d}'
+            self.numero = generer_numero_carte(self.organisation_id)
         self.update_niveau()
-        super().save(*args, **kwargs)      
+        super().save(*args, **kwargs)
 
 
 class MouvementFidelite(models.Model):

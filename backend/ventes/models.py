@@ -1,12 +1,15 @@
+from decimal import Decimal
+
 from django.db import models
 from django.conf import settings
 from stock.models import Produit
+from tenants.models import TenantModel
 
-class Vente(models.Model):
+class Vente(TenantModel):
     DEVISES = [('XOF','XOF'), ('EUR','EUR'), ('USD','USD')]
     STATUTS = [('payee','Payée'), ('annulee','Annulée'), ('suspendue','Suspendue')]
 
-    numero_ticket = models.CharField(max_length=20, unique=True)
+    numero_ticket = models.CharField(max_length=40)
     caissier = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='ventes')
     numero_caisse = models.CharField(max_length=20, blank=True)
     statut = models.CharField(max_length=10, choices=STATUTS, default='payee')
@@ -32,6 +35,10 @@ class Vente(models.Model):
             models.Index(fields=['date_locale']),
             models.Index(fields=['caissier']),
             models.Index(fields=['statut']),
+            models.Index(fields=['organisation', 'date_locale']),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['organisation', 'numero_ticket'], name='uniq_vente_ticket'),
         ]
 
     def __str__(self):
@@ -53,7 +60,7 @@ class LigneVente(models.Model):
         verbose_name = "Ligne de vente"
 
     def save(self, *args, **kwargs):
-        self.total = self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+        self.total = self.quantite * Decimal(self.prix_unitaire) * (1 - Decimal(self.remise) / 100)
         super().save(*args, **kwargs)
 
 
@@ -80,19 +87,21 @@ class Paiement(models.Model):
         return f"{self.methode} {self.montant} {self.devise}"
 
 
-class DonneesPassagers(models.Model):
+class DonneesPassagers(TenantModel):
     """Données externes aéroport — saisie manuelle mensuelle"""
     annee = models.IntegerField()
     mois = models.IntegerField()
     nombre_passagers = models.IntegerField()
-    source = models.CharField(max_length=100, default="Aéroport Ouagadougou")
+    source = models.CharField(max_length=100, blank=True)
     notes = models.TextField(blank=True)
     saisie_par = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Données passagers"
-        unique_together = ['annee', 'mois']
+        constraints = [
+            models.UniqueConstraint(fields=['organisation', 'annee', 'mois'], name='uniq_passagers_mois'),
+        ]
         ordering = ['-annee', '-mois']
 
     def __str__(self):

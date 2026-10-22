@@ -1,0 +1,41 @@
+# Surcharge LOCALE, chargée automatiquement par `docker compose up`.
+# Ignorée en production : docker compose -f docker-compose.yml up -d
+#
+#  - Mailpit : boîte mail de test → http://localhost:8025 (tous les emails envoyés y arrivent)
+#  - Paiement simulé : aucune clé ni connexion Internet nécessaire
+#  - Base de données accessible sur localhost:5432 (outils comme DBeaver / pgAdmin)
+
+x-local-env: &local-env
+  EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+  EMAIL_HOST: mailpit
+  EMAIL_PORT: 1025
+  EMAIL_USE_TLS: "False"
+  EMAIL_HOST_USER: ""
+  EMAIL_HOST_PASSWORD: ""
+  PAYMENT_PROVIDER: simulateur
+  PAYMENT_SIMULATEUR_AUTORISE: "True"
+  PUBLIC_URL: http://localhost
+  FRONTEND_URL: http://localhost
+  CAISSE_URL: http://localhost:81
+  STOCK_URL: http://localhost:82
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "8025:8025"
+    restart: unless-stopped
+
+  db:
+    ports:
+      - "5432:5432"
+
+  backend:
+    environment:
+      <<: *local-env
+    depends_on:
+      - mailpit
+
+  scheduler:
+    environment:
+      <<: *local-env

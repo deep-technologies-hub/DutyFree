@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:24px">
+  {% for titre, valeur in cartes %}
+  <div style="background:var(--darkened-bg,#f8f8f8);border:1px solid var(--border-color,#e0e0e0);border-radius:8px;padding:14px 16px">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--body-quiet-color,#666)">{{ titre }}</div>
+    <div style="font-size:24px;font-weight:700;margin-top:4px;color:var(--body-fg,#111)">{{ valeur }}</div>
+  </div>
+  {% endfor %}
+</div>
+<table style="width:100%;border-collapse:collapse;font-size:13px">
+  <thead>
+    <tr style="text-align:left;border-bottom:2px solid var(--border-color,#ddd)">
+      <th style="padding:8px">Boutique</th><th style="padding:8px">Code</th><th style="padding:8px">Plan</th>
+      <th style="padding:8px">Statut</th><th style="padding:8px">Échéance</th><th style="padding:8px">Jours</th>
+      <th style="padding:8px">Caisses</th><th style="padding:8px">Utilisateurs</th><th style="padding:8px">Produits</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr style="border-bottom:1px solid var(--hairline-color,#eee)">
+      <td style="padding:8px;font-weight:600">{{ r.nom }}</td>
+      <td style="padding:8px"><code>{{ r.slug }}</code></td>
+      <td style="padding:8px">{{ r.plan }}</td>
+      <td style="padding:8px">
+        <span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:#fff;background:{% if r.statut == 'actif' %}#059669{% elif r.statut == 'essai' %}#2563EB{% else %}#DC2626{% endif %}">{{ r.statut_label }}</span>
+      </td>
+      <td style="padding:8px">{{ r.date_fin }}</td>
+      <td style="padding:8px">{% if r.jours != None %}{{ r.jours }}{% else %}—{% endif %}</td>
+      <td style="padding:8px">{{ r.caisses }}</td>
+      <td style="padding:8px">{{ r.users }}</td>
+      <td style="padding:8px">{{ r.produits }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="9" style="padding:20px;text-align:center;color:#888">Aucune organisation.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="margin-top:20px;font-size:13px">
+  Pour activer une boutique sans paiement en ligne :
+  <a href="{% url 'admin:tenants_organisation_changelist' %}">liste des organisations</a> →
+  cocher → action « Activer / offrir N mois ».
+</p>
+{% endblock %}

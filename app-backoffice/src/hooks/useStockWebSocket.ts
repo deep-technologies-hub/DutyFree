@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-
-const WS_URL = (import.meta.env.VITE_WS_URL || 'ws://localhost:8000') + '/ws/stock/';
+import { wsUrl } from '../api';
 
 export interface StockAlert {
   id: string;
@@ -41,7 +40,7 @@ export function useStockWebSocket(): UseStockWsReturn {
 
   const connect = useCallback(() => {
     try {
-      const socket = new WebSocket(WS_URL);
+      const socket = new WebSocket(wsUrl('/ws/stock/'));
 
       socket.onopen = () => {
         setConnected(true);

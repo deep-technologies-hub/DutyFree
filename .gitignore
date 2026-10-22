@@ -1,0 +1,15 @@
+# Secrets
+.env
+*/.env
+!*.env.example
+
+# Python
+__pycache__/
+*.pyc
+backend/db.sqlite3
+backend/staticfiles/
+backend/media/produits/*/
+
+# Node
+node_modules/
+dist/

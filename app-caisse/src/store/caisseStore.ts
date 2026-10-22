@@ -226,7 +226,9 @@ export const useCaisseStore = create<CaisseStore>()(
         if (offlineQueue.length === 0) return;
         try {
           const result = await ventesApi.syncOffline(offlineQueue);
-          if (result.synced > 0) { set(s => ({ offlineQueue: [] })); }
+          // Ne retirer que les tickets confirmés par le serveur (les autres restent en file)
+          const confirmes = new Set(result.tickets ?? []);
+          set(s => ({ offlineQueue: s.offlineQueue.filter(v => !confirmes.has(v.numero_ticket)) }));
         } catch { /* retry later */ }
       },
 

@@ -1,37 +1,69 @@
-version: '3.8'
+# Déploiement SaaS : une seule pile sert toutes les organisations (multi-tenant).
+#
+#   Local      : docker compose up -d --build
+#                (charge aussi docker-compose.override.yml : Mailpit + paiement simulé)
+#   Production : docker compose -f docker-compose.yml up -d --build
+#
+# Copiez .env.example en .env avant le premier lancement.
+
+x-backend-env: &backend-env
+  env_file: .env
+  environment:
+    POSTGRES_HOST: db
+    POSTGRES_PORT: 5432
+    REDIS_URL: redis://redis:6379/0
+    DJANGO_SETTINGS_MODULE: backend.settings
+    NUM_PROXIES: ${NUM_PROXIES:-1}
 
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-dutyfree}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
     restart: unless-stopped
 
   backend:
     build:
       context: ./backend
-    command: >
-      sh -c "sleep 5 && python manage.py collectstatic --noinput && python manage.py migrate && daphne -b 0.0.0.0 -p 8000 backend.asgi:application"
+    <<: *backend-env
     volumes:
       - backend_static:/app/staticfiles
       - backend_media:/app/media
-    environment:
-      - DEBUG=${DEBUG:-False}
-      - SECRET_KEY=${SECRET_KEY:-dutyfree-secret-prod-123}
-      - POSTGRES_DB=${POSTGRES_DB:-dutyfree}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - DJANGO_SETTINGS_MODULE=backend.settings
-    ports:
-      - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Tâche quotidienne : expirations, factures de renouvellement, relances par email.
+  scheduler:
+    build:
+      context: ./backend
+    <<: *backend-env
+    entrypoint: []
+    command: ["sh", "-c", "while true; do python manage.py taches_quotidiennes; sleep 86400; done"]
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   app-backoffice:
@@ -39,7 +71,7 @@ services:
       context: ./app-backoffice
       args:
         - VITE_API_URL=/api
-        - VITE_WS_URL=/ws
+        - VITE_WS_URL=
     restart: unless-stopped
 
   app-caisse:
@@ -47,7 +79,7 @@ services:
       context: ./app-caisse
       args:
         - VITE_API_URL=/api
-        - VITE_WS_URL=/ws
+        - VITE_WS_URL=
     restart: unless-stopped
 
   app-stock:
@@ -55,17 +87,18 @@ services:
       context: ./app-stock
       args:
         - VITE_API_URL=/api
-        - VITE_WS_URL=/ws
+        - VITE_WS_URL=
     restart: unless-stopped
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     ports:
-      - "80:80"     # Backoffice
+      - "80:80"     # Backoffice (+ inscription)
       - "81:81"     # Caisse
       - "82:82"     # Stock
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx-backend.conf:/etc/nginx/dutyfree_backend.conf:ro
       - backend_static:/usr/share/nginx/html/static:ro
       - backend_media:/usr/share/nginx/html/media:ro
     depends_on:

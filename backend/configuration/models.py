@@ -2,12 +2,14 @@ from django.db import models
 
 
 class Configuration(models.Model):
-    """Paramètres système de la boutique — singleton."""
+    """Paramètres de la boutique — un enregistrement par organisation."""
+    organisation = models.OneToOneField('tenants.Organisation', on_delete=models.CASCADE,
+                                        related_name='configuration')
     # Boutique
-    nom_boutique = models.CharField(max_length=200, default='DJBC Duty Free Ouagadougou')
-    nif = models.CharField(max_length=50, default='BF-2024-00123456')
-    adresse = models.CharField(max_length=300, default='Aéroport International de Ouagadougou')
-    telephone = models.CharField(max_length=30, default='+226 25 30 65 00')
+    nom_boutique = models.CharField(max_length=200, default='Ma boutique Duty Free')
+    nif = models.CharField(max_length=50, blank=True)
+    adresse = models.CharField(max_length=300, blank=True)
+    telephone = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
 
     # Taux de change
@@ -41,6 +43,7 @@ class Configuration(models.Model):
         return self.nom_boutique
 
     @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
+    def get(cls, organisation):
+        obj, _ = cls.objects.get_or_create(
+            organisation=organisation, defaults={'nom_boutique': organisation.nom})
         return obj

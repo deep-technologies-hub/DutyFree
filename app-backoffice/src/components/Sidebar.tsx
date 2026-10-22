@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useBackofficeStore } from '../store/backofficeStore';
-import { LayoutDashboard, TrendingUp, ShoppingBag, Users, Settings, FileDown, LogOut, BarChart3, Plane, Star, Tag } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, ShoppingBag, Users, Settings, FileDown, LogOut, BarChart3, Plane, Star, Tag, CreditCard } from 'lucide-react';
 
 const nav = [
   { section: 'Analyse' },
@@ -16,6 +16,7 @@ const nav = [
   { to: '/utilisateurs', icon: Users, label: 'Utilisateurs' },
   { to: '/exports', icon: FileDown, label: 'Exports' },
   { to: '/configuration', icon: Settings, label: 'Configuration' },
+  { to: '/abonnement', icon: CreditCard, label: 'Abonnement', adminOnly: true },
 ];
 
 export default function Sidebar() {
@@ -31,7 +32,7 @@ export default function Sidebar() {
             <BarChart3 size={14} color="#0C0D11" strokeWidth={2.5} />
           </div>
           <div>
-            <div className="sidebar-logo-mark">DJBC Duty Free</div>
+            <div className="sidebar-logo-mark">{user?.organisation?.nom || 'Duty Free Manager'}</div>
             <div className="sidebar-logo-sub">Backoffice</div>
           </div>
         </div>
@@ -39,7 +40,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
-        {nav.map((item, idx) =>
+        {nav.filter(item => !('adminOnly' in item) || user?.role === 'admin').map((item, idx) =>
           'section' in item
             ? <div key={idx} className="nav-section">{item.section}</div>
             : <NavLink key={item.to} to={item.to!} end={item.to === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
