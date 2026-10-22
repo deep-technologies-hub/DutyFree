@@ -61,6 +61,8 @@ services:
     <<: *backend-env
     entrypoint: []
     command: ["sh", "-c", "while true; do python manage.py taches_quotidiennes; sleep 86400; done"]
+    healthcheck:
+      disable: true
     depends_on:
       backend:
         condition: service_healthy
