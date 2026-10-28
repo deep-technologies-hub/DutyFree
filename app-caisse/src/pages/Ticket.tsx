@@ -22,7 +22,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
   const handlePrint = () => {
     // Fallback window.print() avec CSS dédié
     const html = buildTicketHtml({
-      numero_ticket: sale.id,
+      numero_ticket: sale.ticketNumber,
       createdAt: sale.createdAt,
       items: sale.items.map(i => ({ name: i.product.name ?? i.product.nom ?? '', qty: i.quantity, price: i.unitPrice, currency: sale.currency })),
       total: sale.total,
@@ -62,7 +62,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
       .text(`${boutique?.msg_accueil_1 || 'Bienvenue - Welcome'}\n`)
       .separator()
       .align('left')
-      .line(`Ticket : ${sale.id}`)
+      .line(`Ticket : ${sale.ticketNumber}`)
       .line(`Date   : ${new Date(sale.createdAt).toLocaleString('fr-FR')}`)
       .separator();
     sale.items.forEach(item => {
@@ -92,7 +92,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
             <Check size={26} color="var(--c-up)" strokeWidth={2.5} />
           </div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>Vente enregistrée</div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'IBM Plex Mono, monospace' }}>#{sale.id?.toString().slice(-6).toUpperCase() || 'DFR-' + Date.now().toString().slice(-6)}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'IBM Plex Mono, monospace' }}>{sale.ticketNumber}</div>
         </div>
 
         {/* Ticket */}

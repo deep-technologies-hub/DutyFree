@@ -198,7 +198,7 @@ export default function Cloture({ onBack }: { onBack: () => void }) {
               <tbody>
                 {todaySales.slice(-10).map((sale, i) => (
                   <tr key={i}>
-                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>#{sale.id?.toString().slice(-4) || (1000 + i)}</td>
+                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{sale.ticketNumber}</td>
                     <td className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{new Date(sale.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
                     <td style={{ fontSize: 12 }}>{sale.items.reduce((s, i) => s + i.quantity, 0)} art.</td>
                     <td className="mono" style={{ fontWeight: 700 }}>{fmt(sale.total)} F</td>
