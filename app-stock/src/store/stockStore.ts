@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { stockApi, ventesApi, authApi, authStorage } from '../api';
-import type { Produit, Fournisseur, Sommier, Mouvement, Commande } from '../api';
+import type { Produit, Fournisseur, Sommier, Mouvement, Commande, Categorie } from '../api';
 
 interface StockStore {
   products: Produit[];
+  categories: Categorie[];
   sommiers: Sommier[];
   movements: Mouvement[];
   orders: Commande[];
@@ -17,6 +18,7 @@ interface StockStore {
   setSelectedCategory: (c: string) => void;
   fetchAll: () => Promise<void>;
   fetchProducts: () => Promise<void>;
+  fetchCategories: () => Promise<void>;
   fetchSommiers: () => Promise<void>;
   fetchMovements: () => Promise<void>;
   fetchSuppliers: () => Promise<void>;
@@ -27,6 +29,7 @@ interface StockStore {
 
 export const useStockStore = create<StockStore>((set, get) => ({
   products: [],
+  categories: [],
   sommiers: [],
   movements: [],
   orders: [],
@@ -43,10 +46,18 @@ export const useStockStore = create<StockStore>((set, get) => ({
   fetchProducts: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await stockApi.produits.list();
-      set({ products: res.results, loading: false, isOffline: false });
+      const products = await stockApi.produits.listAll();
+      set({ products, loading: false, isOffline: false });
     } catch {
       set({ products: [], loading: false, isOffline: true, error: 'Failed to fetch products' });
+    }
+  },
+
+  fetchCategories: async () => {
+    try {
+      set({ categories: await stockApi.categories.list() });
+    } catch {
+      set({ error: 'Failed to fetch categories' });
     }
   },
 
@@ -71,11 +82,11 @@ export const useStockStore = create<StockStore>((set, get) => ({
   },
 
   fetchAll: async () => {
-    const { fetchProducts, fetchSommiers, fetchMovements } = get();
+    const { fetchProducts, fetchCategories, fetchSommiers, fetchMovements } = get();
     set({ loading: true, error: null });
 
     try {
-      await Promise.allSettled([fetchProducts(), fetchSommiers(), fetchMovements()]);
+      await Promise.allSettled([fetchProducts(), fetchCategories(), fetchSommiers(), fetchMovements()]);
 
       // Fetch suppliers and orders
       const suppliersRes = await stockApi.fournisseurs.list();

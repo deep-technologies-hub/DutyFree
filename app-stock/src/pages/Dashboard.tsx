@@ -38,9 +38,9 @@ export default function Dashboard() {
   
   const valeurStock = products.reduce((acc, p) => acc + (Math.max(0, p.stock) * p.prix_xof), 0);
 
-  const categoryData = ['Alcools','Parfums','Tabac','Cosmétiques','Confiserie','Accessoires'].map(cat=>({
+  const categoryData = [...new Set(products.map(p => p.categorie_nom || 'Sans catégorie'))].map(cat=>({
     name:cat.substring(0,6),
-    stock:products.filter(p=>p.categorie===cat.toLowerCase()||(cat==='Cosmétiques'&&p.categorie==='cosmetiques')).reduce((a,p)=>a+Math.max(0, p.stock),0),
+    stock:products.filter(p=>(p.categorie_nom || 'Sans catégorie')===cat).reduce((a,p)=>a+Math.max(0, p.stock),0),
   }));
 
   const recentMvts = movements.slice(0,6);
@@ -51,7 +51,7 @@ export default function Dashboard() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:22}}>
         <div>
           <div className="section-label" style={{marginBottom:4}}>Stock</div>
-          <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:24,fontWeight:500,color:'var(--text)',letterSpacing:'-0.01em'}}>Tableau de bord</h1>
+          <h1 className="page-title">Tableau de bord</h1>
         </div>
         <button className="btn btn-ghost btn-sm" style={{gap:6}} onClick={()=>fetchProducts()}>
           <RefreshCw size={12}/> Actualiser
@@ -59,7 +59,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPIs */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:18}}>
+      <div className="kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:18}}>
         <KpiCard icon={<Package size={16}/>} label="Produits"  value={products.length}        sub="référencés"              color="#3D75C4"/>
         <KpiCard icon={<TrendingUp size={16}/>} label="Valeur stock" value={`${fmt(valeurStock)} F`} sub="valorisation globale"     color="#7A5FC4"/>
         <KpiCard icon={<AlertTriangle size={16}/>} label="Ruptures" value={ruptures+critiques}      sub={`${ruptures} rupture · ${critiques} crit.`} color="#C9524A" alert/>

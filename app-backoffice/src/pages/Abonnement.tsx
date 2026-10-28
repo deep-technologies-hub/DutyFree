@@ -136,8 +136,8 @@ export default function AbonnementPage() {
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1100 }}>
       <div style={{ marginBottom: 22 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Compte</div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="page-eyebrow">Compte</div>
+        <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <CreditCard size={18} /> Abonnement
         </h1>
       </div>

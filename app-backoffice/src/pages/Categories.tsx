@@ -1,45 +1,62 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit2, Trash2, Search, Download, Tag } from 'lucide-react';
 import { useBackofficeStore } from '../store/backofficeStore';
+import { stockApi, type ApiError } from '../api';
+import { downloadExcel } from '../utils/exports';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)} M` : fmt(n);
 
 interface Category {
+  id: number;
   name: string;
+  code: string;
   ca: number;
   tickets: number;
   part: number;
-  color?: string;
-  description?: string;
+  produits: number;
+  color: string;
+  description: string;
 }
 
+const emptyForm = { name: '', description: '', color: '#3D75C4' };
+
 export default function CategoriesPage() {
-  const { dashboardData, fetchDashboard } = useBackofficeStore();
+  const { dashboardData, fetchDashboard, user } = useBackofficeStore();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [formData, setFormData] = useState({ name: '', description: '', color: '#3D75C4' });
+  const [formData, setFormData] = useState(emptyForm);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    // Load categories from API data
-    if (dashboardData?.ca_by_categorie) {
-      const apiCategories: Category[] = dashboardData.ca_by_categorie.map((cat, index) => ({
-        name: cat.lignes__produit__categorie || 'Non catégorisé',
-        ca: cat.ca,
-        tickets: cat.tickets,
-        part: cat.tickets, // TODO: Calculate percentage from total
-        color: ['#EA580C', '#14B8A6', '#F59E0B', '#3B82F6', '#8B5CF6', '#E53E3E'][index % 6],
-        description: `Gestion des produits ${String(cat.lignes__produit__categorie || '').toLowerCase()}`
+  useEffect(() => { if (!dashboardData) fetchDashboard(); }, [dashboardData, fetchDashboard]);
+
+  // Catégories de la boutique + leurs ventes du mois (tableau de bord)
+  const load = useCallback(async () => {
+    try {
+      const cats = await stockApi.categories.list();
+      const ventes = dashboardData?.ca_by_categorie ?? [];
+      const totalCA = ventes.reduce((sum, v) => sum + Number(v.ca || 0), 0);
+      setCategories(cats.map(c => {
+        const v = ventes.find(x => x.lignes__produit__categorie === c.nom);
+        const ca = Number(v?.ca || 0);
+        return {
+          id: c.id, name: c.nom, code: c.code, produits: c.nombre_produits,
+          ca, tickets: v?.tickets ?? 0,
+          part: totalCA ? Math.round(ca / totalCA * 1000) / 10 : 0,
+          color: c.couleur, description: c.description,
+        };
       }));
-      setCategories(apiCategories);
-    } else {
-      fetchDashboard();
+    } catch {
+      setCategories([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [dashboardData, fetchDashboard]);
+  }, [dashboardData]);
+
+  useEffect(() => { load(); }, [load]);
 
   const filteredCategories = categories.filter(cat =>
     String(cat.name).toLowerCase().includes(search.toLowerCase())
@@ -48,31 +65,25 @@ export default function CategoriesPage() {
   const totalCA = categories.reduce((sum, cat) => sum + (Number(cat.ca) || 0), 0);
   const totalTickets = categories.reduce((sum, cat) => sum + (Number(cat.tickets) || 0), 0);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingCategory) {
-      // Update existing category
-      setCategories(prev => prev.map(cat =>
-        cat.name === editingCategory.name
-          ? { ...cat, ...formData }
-          : cat
-      ));
-    } else {
-      // Create new category
-      const newCategory: Category = {
-        name: formData.name,
-        ca: 0,
-        tickets: 0,
-        part: 0,
-        color: formData.color,
-        description: formData.description
-      };
-      setCategories(prev => [...prev, newCategory]);
-    }
-
+  const closeModal = () => {
     setShowCreateModal(false);
     setEditingCategory(null);
-    setFormData({ name: '', description: '', color: '#3D75C4' });
+    setFormData(emptyForm);
+    setError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const data = { nom: formData.name.trim(), description: formData.description, couleur: formData.color };
+    try {
+      if (editingCategory) await stockApi.categories.update(editingCategory.id, data);
+      else await stockApi.categories.create(data);
+      await load();
+      closeModal();
+    } catch (err) {
+      setError((err as ApiError).message || 'Enregistrement impossible');
+    }
   };
 
   const handleEdit = (category: Category) => {
@@ -85,21 +96,39 @@ export default function CategoriesPage() {
     setShowCreateModal(true);
   };
 
-  const handleDelete = (category: Category) => {
-    if (confirm(`Supprimer la catégorie "${category.name}" ?`)) {
-      setCategories(prev => prev.filter(cat => cat.name !== category.name));
+  const handleDelete = async (category: Category) => {
+    const avertissement = category.produits ? `\n\n${category.produits} produit(s) passeront « sans catégorie ».` : '';
+    if (!confirm(`Supprimer la catégorie "${category.name}" ?${avertissement}`)) return;
+    try {
+      await stockApi.categories.delete(category.id);
+      await load();
+    } catch (err) {
+      alert((err as ApiError).message || 'Suppression impossible');
     }
   };
+
+  const handleExport = () => downloadExcel({
+    boutique: user?.organisation?.nom || 'Duty Free',
+    title: 'Catégories — ventes du mois en cours',
+    filename: `categories_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    sheets: [{
+      name: 'Catégories',
+      headers: ['Catégorie', 'Code', 'Produits', 'Tickets (mois)', 'CA XOF (mois)', 'Part du CA'],
+      widths: [24, 14, 10, 14, 16, 12],
+      rows: categories.map(c => [c.name, c.code, c.produits, c.tickets, Math.round(c.ca), `${c.part} %`]),
+      total: ['TOTAL', '', categories.reduce((s, c) => s + c.produits, 0), totalTickets, Math.round(totalCA), '100 %'],
+    }],
+  });
 
   return (
     <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Gestion du catalogue</div>
+        <div className="page-eyebrow">Gestion du catalogue</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>Catégories</h1>
+          <h1 className="page-title">Catégories</h1>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-outline" style={{ gap: 6, fontSize: 12 }}>
+            <button onClick={handleExport} className="btn btn-outline" style={{ gap: 6, fontSize: 12 }}>
               <Download size={12} /> Exporter
             </button>
             <button
@@ -115,7 +144,7 @@ export default function CategoriesPage() {
       </div>
 
       {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
+      <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
         <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
           <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}>
             {categories.length}
@@ -177,8 +206,8 @@ export default function CategoriesPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-          {filteredCategories.map((category, index) => (
-            <div key={category.name} className="card" style={{ padding: '20px', position: 'relative', overflow: 'hidden' }}>
+          {filteredCategories.map((category) => (
+            <div key={category.id} className="card" style={{ padding: '20px', position: 'relative', overflow: 'hidden' }}>
               {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -199,7 +228,7 @@ export default function CategoriesPage() {
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{category.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
-                      {category.tickets} tickets · {category.part}% du CA
+                      {category.produits} produits · {category.part}% du CA du mois
                     </div>
                   </div>
                 </div>
@@ -300,11 +329,7 @@ export default function CategoriesPage() {
                 {editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
               </h2>
               <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setEditingCategory(null);
-                  setFormData({ name: '', description: '', color: '#3D75C4' });
-                }}
+                onClick={closeModal}
                 style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}
               >
                 ×
@@ -312,6 +337,9 @@ export default function CategoriesPage() {
             </div>
 
             <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
+              {error && (
+                <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 6, background: 'var(--c-down-dim)', color: 'var(--c-down)', fontSize: 12 }}>{error}</div>
+              )}
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
                   Nom de la catégorie *
@@ -387,11 +415,7 @@ export default function CategoriesPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setEditingCategory(null);
-                    setFormData({ name: '', description: '', color: '#3D75C4' });
-                  }}
+                  onClick={closeModal}
                   className="btn btn-outline"
                   style={{ padding: '8px 20px' }}
                 >

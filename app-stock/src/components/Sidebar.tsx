@@ -6,6 +6,10 @@ import {
   ClipboardList, AlertTriangle, ShoppingCart, ScanSearch, LogOut, Tag
 } from 'lucide-react';
 
+const ROLES: Record<string, string> = {
+  admin: 'Administrateur', superviseur: 'Superviseur', stock_manager: 'Gestionnaire de stock', caissier: 'Caissier',
+};
+
 const nav = [
   { section: 'Vue d\'ensemble' },
   { to: '/', icon: LayoutDashboard, label: 'Tableau de bord' },
@@ -31,17 +35,17 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="sidebar-logo">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <div style={{ width: 28, height: 28, background: 'var(--accent)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Package size={14} color="#0A0E1A" />
+          <div className="sidebar-logo-icon">
+            <Package size={15} strokeWidth={2.2} />
           </div>
-          <div>
-            <div className="sidebar-logo-mark">Duty Free</div>
-            <div className="sidebar-logo-sub">Stock Manager</div>
+          <div className="sidebar-logo-text" style={{ minWidth: 0 }}>
+            <div className="sidebar-logo-mark">{user?.organisation?.nom || 'Duty Free Manager'}</div>
+            <div className="sidebar-logo-sub">Stock</div>
           </div>
         </div>
         {isOffline && (
-          <div style={{ marginTop: 8, fontSize: 10, background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 4, padding: '3px 8px', color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.05em' }}>
-            ⚠ MODE DÉMO
+          <div className="sidebar-offline" style={{ marginTop: 8, fontSize: 10, background: 'rgba(255,255,255,0.18)', borderRadius: 4, padding: '3px 8px', color: '#fff', fontWeight: 600, letterSpacing: '0.05em' }}>
+            ⚠ HORS LIGNE
           </div>
         )}
       </div>
@@ -54,28 +58,28 @@ export default function Sidebar() {
           }
           const { to, icon: Icon, label } = item as { to: string; icon: React.ElementType; label: string };
           return (
-            <NavLink key={to} to={to} end={to === '/'}
+            <NavLink key={to} to={to} end={to === '/'} title={label}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Icon size={15} />
-              {label}
+              <span className="nav-label">{label}</span>
             </NavLink>
           );
         })}
       </nav>
 
       {/* User */}
-      <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', marginTop: 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--accent)', flexShrink: 0 }}>
-            {user?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'AD'}
+      <div className="sidebar-user">
+        <div className="sidebar-user-row" style={{ marginBottom: 10 }}>
+          <div className="sidebar-avatar">
+            {user?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'}
           </div>
           <div style={{ overflow: 'hidden' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.full_name || 'Admin'}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{user?.role || 'stock_manager'}</div>
+            <div className="sidebar-user-name">{user?.full_name || user?.username}</div>
+            <div className="sidebar-user-role">{ROLES[user?.role ?? ''] ?? user?.role}</div>
           </div>
         </div>
-        <button onClick={logout} className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', gap: 6, padding: '7px' }}>
-          <LogOut size={13} /> Déconnexion
+        <button onClick={logout} className="sidebar-logout" style={{ width: '100%' }}>
+          <LogOut size={13} /> <span className="sidebar-logout-label">Déconnexion</span>
         </button>
       </div>
     </aside>

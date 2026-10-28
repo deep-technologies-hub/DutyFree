@@ -4,14 +4,12 @@ import { stockApi, type Produit } from '../api';
 import { Plus, Search, Edit2, X, Save, RefreshCw, AlertTriangle, CheckCircle, Package } from 'lucide-react';
 import { ProductImage } from '../components/ProductImage';
 
-const CATEGORIES = ['alcools', 'parfums', 'tabac', 'cosmetiques', 'confiserie', 'accessoires', 'alimentaire'];
-const CAT_LABELS: Record<string, string> = { alcools: 'Alcools', parfums: 'Parfums', tabac: 'Tabac', cosmetiques: 'Cosmétiques', confiserie: 'Confiserie', accessoires: 'Accessoires', alimentaire: 'Alimentaire' };
 const UNITES = ['bouteille', 'flacon', 'paquet', 'boite', 'carton', 'piece', 'kg', 'litre'];
 const STATUS_COLORS: Record<string, string> = { ok: 'var(--c-up)', bas: 'var(--accent)', critique: 'var(--c-warn)', rupture: 'var(--c-down)' };
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', bas: 'Bas', critique: 'Critique', rupture: 'Rupture' };
 
 type ModalMode = 'create' | 'edit' | 'view' | null;
-const emptyForm = (): Partial<Produit> => ({ code: '', code_barres: '', nom: '', nom_en: '', categorie: 'alcools', prix_xof: 0, prix_eur: 0, prix_usd: 0, stock: 0, stock_min: 5, stock_max: 100, unite: 'bouteille', fournisseur: null });
+const emptyForm = (): Partial<Produit> => ({ code: '', code_barres: '', nom: '', nom_en: '', categorie: null, prix_xof: 0, prix_eur: 0, prix_usd: 0, stock: 0, stock_min: 5, stock_max: 100, unite: 'bouteille', fournisseur: null });
 
 function Field({ label, value, onChange, placeholder = '' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
@@ -41,7 +39,7 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 }
 
 export default function Produits() {
-  const { products, suppliers, fetchProducts } = useStockStore();
+  const { products, categories, suppliers, fetchProducts } = useStockStore();
   const [search, setSearch] = useState('');
   const [cat, setCat] = useState('Tous');
   const [statusFilter, setStatusFilter] = useState('Tous');
@@ -54,7 +52,7 @@ export default function Produits() {
 
   const filtered = useMemo(() => products.filter(p => {
     const matchSearch = !search || p.nom.toLowerCase().includes(search.toLowerCase()) || p.code.toLowerCase().includes(search.toLowerCase()) || p.code_barres?.includes(search);
-    const matchCat = cat === 'Tous' || p.categorie === cat;
+    const matchCat = cat === 'Tous' || String(p.categorie) === cat;
     const matchStatus = statusFilter === 'Tous' || p.statut_stock === statusFilter;
     return matchSearch && matchCat && matchStatus;
   }), [products, search, cat, statusFilter]);
@@ -88,11 +86,11 @@ export default function Produits() {
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 6 }}>Gestion du stock</div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Produits</h1>
-          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 0' }}>{products.length} produits enregistrés</p>
+          <div className="page-eyebrow">Gestion du stock</div>
+          <h1 className="page-title">Produits</h1>
+          <p className="page-sub">{products.length} produits enregistrés</p>
         </div>
-        <button onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '10px 18px', color: 'var(--bg)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        <button onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '10px 18px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
           <Plus size={15} /> Nouveau produit
         </button>
       </div>
@@ -103,9 +101,9 @@ export default function Produits() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Nom, code, code-barres..." style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 8, padding: '9px 12px 9px 34px', color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {['Tous', ...CATEGORIES].map(c => (
-            <button key={c} onClick={() => setCat(c)} style={{ padding: '6px 12px', borderRadius: 20, border: '1px solid', borderColor: cat === c ? 'var(--accent)' : 'var(--border-2)', background: cat === c ? 'rgba(245,200,66,0.1)' : 'transparent', color: cat === c ? 'var(--accent)' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-              {c === 'Tous' ? 'Tous' : CAT_LABELS[c]}
+          {[{ value: 'Tous', label: 'Tous' }, ...categories.map(c => ({ value: String(c.id), label: c.nom }))].map(c => (
+            <button key={c.value} onClick={() => setCat(c.value)} style={{ padding: '6px 12px', borderRadius: 20, border: '1px solid', borderColor: cat === c.value ? 'var(--accent)' : 'var(--border-2)', background: cat === c.value ? 'var(--accent-dim)' : 'transparent', color: cat === c.value ? 'var(--accent)' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              {c.label}
             </button>
           ))}
         </div>
@@ -144,7 +142,7 @@ export default function Produits() {
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>{p.nom}</div>
                   {p.nom_en && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.nom_en}</div>}
                 </td>
-                <td style={{ padding: '11px 16px' }}><span style={{ fontSize: 11, background: 'var(--surface-2)', borderRadius: 4, padding: '3px 8px', color: 'var(--text-2)' }}>{CAT_LABELS[p.categorie] || p.categorie}</span></td>
+                <td style={{ padding: '11px 16px' }}><span style={{ fontSize: 11, background: 'var(--surface-2)', borderRadius: 4, padding: '3px 8px', color: 'var(--text-2)' }}>{p.categorie_nom || '—'}</span></td>
                 <td style={{ padding: '11px 16px' }}>
                   <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, color: p.stock <= p.stock_min ? 'var(--c-down)' : 'var(--text)' }}>{p.stock}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-3)' }}>min {p.stock_min}</div>
@@ -153,7 +151,7 @@ export default function Produits() {
                 <td style={{ padding: '11px 16px', fontFamily: 'IBM Plex Mono, monospace', color: 'var(--text)' }}>{new Intl.NumberFormat('fr-FR').format(p.prix_xof)} F</td>
                 <td style={{ padding: '11px 16px', color: 'var(--text-2)', fontSize: 12 }}>{p.fournisseur_nom || '—'}</td>
                 <td style={{ padding: '11px 16px' }} onClick={e => e.stopPropagation()}>
-                  <button onClick={() => openEdit(p)} style={{ background: 'rgba(245,200,66,0.1)', border: '1px solid rgba(245,200,66,0.2)', borderRadius: 6, padding: '5px 10px', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <button onClick={() => openEdit(p)} style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 6, padding: '5px 10px', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <Edit2 size={11} /> Modifier
                   </button>
                 </td>
@@ -176,7 +174,7 @@ export default function Produits() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {modalMode === 'view' && <button onClick={() => openEdit(selected!)} style={{ background: 'rgba(245,200,66,0.1)', border: '1px solid rgba(245,200,66,0.2)', borderRadius: 6, padding: '7px 14px', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}><Edit2 size={12} /> Modifier</button>}
+                {modalMode === 'view' && <button onClick={() => openEdit(selected!)} style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 6, padding: '7px 14px', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}><Edit2 size={12} /> Modifier</button>}
                 <button onClick={closeModal} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}><X size={18} /></button>
               </div>
             </div>
@@ -184,7 +182,7 @@ export default function Produits() {
               {modalMode === 'view' && selected ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    {[['Code', selected.code], ['Code-barres', selected.code_barres || '—'], ['Nom FR', selected.nom], ['Nom EN', selected.nom_en || '—'], ['Catégorie', CAT_LABELS[selected.categorie] || selected.categorie], ['Unité', selected.unite]].map(([l, v]) => (
+                    {[['Code', selected.code], ['Code-barres', selected.code_barres || '—'], ['Nom FR', selected.nom], ['Nom EN', selected.nom_en || '—'], ['Catégorie', selected.categorie_nom || '—'], ['Unité', selected.unite]].map(([l, v]) => (
                       <div key={l} style={{ background: 'var(--bg)', borderRadius: 7, padding: '10px 14px' }}>
                         <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 3 }}>{l}</div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{v}</div>
@@ -217,7 +215,7 @@ export default function Produits() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {error && <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, padding: '10px 16px', fontSize: 12, color: 'var(--c-down)', display: 'flex', gap: 8, alignItems: 'center' }}><AlertTriangle size={14} /> {error}</div>}
+                  {error && <div style={{ background: 'var(--c-down-dim)', border: '1px solid var(--c-down-bd)', borderRadius: 8, padding: '10px 16px', fontSize: 12, color: 'var(--c-down)', display: 'flex', gap: 8, alignItems: 'center' }}><AlertTriangle size={14} /> {error}</div>}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="Code interne *" value={form.code || ''} onChange={v => setField('code', v)} placeholder="ALC-001" />
                     <Field label="Code-barres (EAN)" value={form.code_barres || ''} onChange={v => setField('code_barres', v)} placeholder="3014260001233" />
@@ -227,7 +225,7 @@ export default function Produits() {
                     <Field label="Nom (EN)" value={form.nom_en || ''} onChange={v => setField('nom_en', v)} placeholder="Hennessy VS 70cl" />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    <SelectField label="Catégorie *" value={form.categorie || 'alcools'} onChange={v => setField('categorie', v)} options={CATEGORIES.map(c => ({ value: c, label: CAT_LABELS[c] }))} />
+                    <SelectField label="Catégorie" value={form.categorie ? String(form.categorie) : ''} onChange={v => setField('categorie', v ? Number(v) : null)} options={[{ value: '', label: '— Sans catégorie —' }, ...categories.map(c => ({ value: String(c.id), label: c.nom }))]} />
                     <SelectField label="Unité" value={form.unite || 'bouteille'} onChange={v => setField('unite', v)} options={UNITES.map(u => ({ value: u, label: u }))} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -248,7 +246,7 @@ export default function Produits() {
             {(modalMode === 'create' || modalMode === 'edit') && (
               <div style={{ padding: '16px 28px', borderTop: '1px solid var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                 <button onClick={closeModal} style={{ background: 'transparent', border: '1px solid var(--border-2)', borderRadius: 8, padding: '9px 18px', color: 'var(--text-3)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Annuler</button>
-                <button onClick={handleSave} disabled={saving} style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '9px 20px', color: 'var(--bg)', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
+                <button onClick={handleSave} disabled={saving} style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '9px 20px', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
                   {saving ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={13} />}
                   {modalMode === 'create' ? 'Créer le produit' : 'Enregistrer'}
                 </button>

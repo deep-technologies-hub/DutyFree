@@ -1,154 +1,82 @@
+import { useEffect, useState } from 'react';
 import { useBackofficeStore } from '../store/backofficeStore';
-import { Download, UserPlus, Shield, Settings2, FileSpreadsheet, FileText, RefreshCw } from 'lucide-react';
+import { ventesApi, type ApiError, type TauxCapture } from '../api';
+import { Plus, Trash2 } from 'lucide-react';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 
-export function UtilisateursPage() {
-  const roleColors: Record<string, string> = { admin: 'badge-gold', superviseur: 'badge-up', caissier: 'badge-neutral' };
-  const users: Array<{ id: number; name: string; email: string; role: string; lastLogin: string; status: string }> = []; // TODO: Fetch from API when available
+type Form = { id: number | null; annee: number; mois: number; nombre_passagers: string; source: string; notes: string };
 
-  return (
-    <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1400, margin: '0 auto' }}>
-      <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Accès & Sécurité</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>Utilisateurs</h1>
-          <button className="btn btn-primary" style={{ gap: 6 }}><UserPlus size={13} /> Nouvel utilisateur</button>
-        </div>
-        <hr className="rule" style={{ marginTop: 16 }} />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, marginBottom: 28, background: 'var(--border)' }}>
-        {[
-          { label: 'Administrateurs', value: users.filter(u => u.role === 'admin').length, icon: <Shield size={14} /> },
-          { label: 'Superviseurs', value: users.filter(u => u.role === 'superviseur').length, icon: <Shield size={14} /> },
-          { label: 'Caissiers', value: users.filter(u => u.role === 'caissier').length, icon: <Shield size={14} /> },
-        ].map(k => (
-          <div key={k.label} style={{ background: 'var(--surface)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div className="section-label" style={{ marginBottom: 4 }}>{k.label}</div>
-              <div className="mono" style={{ fontSize: 26, fontWeight: 500 }}>{k.value}</div>
-            </div>
-            <span style={{ color: 'var(--text-2)' }}>{k.icon}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Utilisateur</th>
-              <th>Email</th>
-              <th>Rôle</th>
-              <th>Dernière connexion</th>
-              <th>Statut</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id}>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>
-                      {u.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                    </div>
-                    <span style={{ fontWeight: 500 }}>{u.name}</span>
-                  </div>
-                </td>
-                <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{u.email}</td>
-                <td><span className={`badge ${roleColors[u.role]}`}>{u.role}</span></td>
-                <td className="mono" style={{ fontSize: 11, color: 'var(--text-2)' }}>
-                  {new Date(u.lastLogin).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                </td>
-                <td><span className="badge badge-up">{u.status}</span></td>
-                <td>
-                  <button style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 3, padding: '4px 10px', fontSize: 11, color: 'var(--text-2)', cursor: 'pointer' }}>
-                    Modifier
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-export function ExportsPage() {
-  const exports = [
-    { title: 'Rapport journalier des ventes', desc: 'CA, tickets, ticket moyen par heure et par vendeur', icon: <FileSpreadsheet size={18} />, format: 'Excel' },
-    { title: 'Rapport mensuel complet', desc: 'Toutes les métriques du mois en cours et comparaison M-1', icon: <FileSpreadsheet size={18} />, format: 'Excel' },
-    { title: 'Rapport DJBC — Sommiers', desc: 'État des sommiers douaniers pour transmission à la DJBC', icon: <FileText size={18} />, format: 'PDF' },
-    { title: 'Mix des ventes par produit', desc: 'Top ventes, quantités, CA par article sur la période', icon: <FileSpreadsheet size={18} />, format: 'Excel' },
-    { title: 'Journal des paiements', desc: 'Tous les encaissements détaillés par mode et devise', icon: <FileSpreadsheet size={18} />, format: 'Excel' },
-    { title: 'Taux de capture passagers', desc: 'Ratio tickets / passagers (données aéroport requises)', icon: <FileText size={18} />, format: 'PDF' },
-    { title: 'Duplicata de tickets', desc: 'Réédition des tickets sur une période, vendeur, ou numéro', icon: <FileText size={18} />, format: 'PDF' },
-    { title: 'Rapport de stock', desc: 'Mouvements, ruptures, valorisation du stock', icon: <FileSpreadsheet size={18} />, format: 'Excel' },
-  ];
-
-  return (
-    <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1400, margin: '0 auto' }}>
-      <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Extraction de données</div>
-        <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>Exports & Rapports</h1>
-        <hr className="rule" style={{ marginTop: 16 }} />
-      </div>
-
-      {/* Date range */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 32, alignItems: 'center', background: 'var(--surface)', padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 4 }}>
-        <div className="section-label">Période :</div>
-        <input type="date" className="input" defaultValue="2025-06-01" style={{ fontSize: 12 }} />
-        <span style={{ color: 'var(--text-2)', fontSize: 13 }}>→</span>
-        <input type="date" className="input" defaultValue="2025-06-15" style={{ fontSize: 12 }} />
-        <select className="select" style={{ fontSize: 12 }}>
-          <option>Toutes caisses</option>
-          <option>CAISSE-01</option>
-        </select>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-        {exports.map(e => (
-          <div key={e.title} className="card" style={{ padding: '20px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <div style={{ padding: 10, background: 'var(--surface)', borderRadius: 4, color: 'var(--text)', flexShrink: 0 }}>
-              {e.icon}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 14 }}>{e.title}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.5 }}>{e.desc}</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 12, gap: 5 }}>
-                  <Download size={11} /> {e.format}
-                </button>
-                <span style={{ display: 'flex', alignItems: 'center', fontSize: 10, color: 'var(--text-2)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{e.format}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const emptyForm = (): Form => {
+  const now = new Date();
+  return { id: null, annee: now.getFullYear(), mois: now.getMonth() + 1, nombre_passagers: '', source: '', notes: '' };
+};
 
 export function PassagersPage() {
-  const { tauxCapture } = useBackofficeStore();
-  const passengerData = tauxCapture; // Use data from API
+  const { tauxCapture, fetchTauxCapture } = useBackofficeStore();
+  const [form, setForm] = useState<Form | null>(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { fetchTauxCapture(); }, [fetchTauxCapture]);
+
+  // L'API renvoie du plus récent au plus ancien : on affiche dans l'ordre chronologique
+  const passengerData = [...tauxCapture].reverse();
+
+  const edit = (p: TauxCapture) => setForm({
+    id: p.id, annee: p.annee, mois: p.mois, nombre_passagers: String(p.passagers), source: p.source, notes: p.notes,
+  });
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form) return;
+    setSaving(true);
+    setError('');
+    const data = {
+      annee: form.annee, mois: form.mois, nombre_passagers: Number(form.nombre_passagers),
+      source: form.source, notes: form.notes,
+    };
+    try {
+      if (form.id) await ventesApi.passagers.update(form.id, data);
+      else await ventesApi.passagers.create(data);
+      await fetchTauxCapture();
+      setForm(null);
+    } catch (err) {
+      const e = err as ApiError;
+      setError(e.status === 400 && !form.id
+        ? 'Des données existent déjà pour ce mois : modifiez la ligne existante.'
+        : e.message || 'Enregistrement impossible');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (p: TauxCapture) => {
+    const mois = new Date(p.annee, p.mois - 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    if (!confirm(`Supprimer les données passagers de ${mois} ?`)) return;
+    try {
+      await ventesApi.passagers.delete(p.id);
+      await fetchTauxCapture();
+    } catch (err) {
+      alert((err as ApiError).message || 'Suppression impossible');
+    }
+  };
 
   return (
     <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Données externes aéroport</div>
+        <div className="page-eyebrow">Données externes aéroport</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>Taux de capture</h1>
-          <button className="btn btn-outline" style={{ gap: 6, fontSize: 12 }}><RefreshCw size={12} /> Saisir données passagers</button>
+          <h1 className="page-title">Taux de capture</h1>
+          <button className="btn btn-outline" style={{ gap: 6, fontSize: 12 }} onClick={() => { setError(''); setForm(emptyForm()); }}>
+            <Plus size={12} /> Saisir données passagers
+          </button>
         </div>
         <hr className="rule" style={{ marginTop: 16 }} />
       </div>
 
-      <div style={{ padding: '14px 18px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 4, marginBottom: 28, fontSize: 13, color: 'var(--sapphire, #1E3A8A)' }}>
-        ℹ Les données de fréquentation passagers sont fournies mensuellement par l'aéroport. Saisie manuelle requise.
+      <div style={{ padding: '14px 18px', background: 'var(--c-info-dim)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 28, fontSize: 13, color: 'var(--c-info)' }}>
+        ℹ Les données de fréquentation passagers sont fournies mensuellement par l'aéroport. Le taux de capture = tickets émis / passagers du mois.
       </div>
 
       <div className="card" style={{ overflow: 'hidden' }}>
@@ -160,18 +88,24 @@ export function PassagersPage() {
               <th>Tickets émis</th>
               <th>Taux de capture</th>
               <th>Évolution</th>
+              <th>Source</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
+            {passengerData.length === 0 && (
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 48, color: 'var(--text-3)' }}>
+                Aucune donnée saisie. Cliquez sur « Saisir données passagers » pour commencer.
+              </td></tr>
+            )}
             {passengerData.map((p, i) => {
               const prev = i > 0 ? passengerData[i - 1].taux : p.taux;
               const diff = p.taux - prev;
               const monthName = new Date(p.annee, p.mois - 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
               return (
-                <tr key={`${p.annee}-${p.mois}`}>
+                <tr key={p.id}>
                   <td style={{ fontWeight: i === passengerData.length - 1 ? 600 : 400 }}>
-                    {monthName} {i === passengerData.length - 1 && <span className="badge badge-gold" style={{ marginLeft: 6 }}>Actuel</span>}
+                    {monthName} {i === passengerData.length - 1 && <span className="badge badge-gold" style={{ marginLeft: 6 }}>Dernier</span>}
                   </td>
                   <td className="mono">{fmt(p.passagers)}</td>
                   <td className="mono">{p.tickets}</td>
@@ -185,9 +119,11 @@ export function PassagersPage() {
                       </span>
                     )}
                   </td>
-                  <td>
-                    <button style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 3, padding: '4px 10px', fontSize: 11, color: 'var(--text-2)', cursor: 'pointer' }}>
-                      Modifier
+                  <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{p.source || '—'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="btn btn-xs btn-ghost" onClick={() => { setError(''); edit(p); }}>Modifier</button>
+                    <button className="btn btn-xs btn-ghost" onClick={() => remove(p)} style={{ color: 'var(--c-down)', marginLeft: 4 }} title="Supprimer">
+                      <Trash2 size={11} />
                     </button>
                   </td>
                 </tr>
@@ -196,66 +132,51 @@ export function PassagersPage() {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
 
-export function ConfigurationPage() {
-  return (
-    <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 900, margin: '0 auto' }}>
-      <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Paramètres système</div>
-        <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>Configuration</h1>
-        <hr className="rule" style={{ marginTop: 16 }} />
-      </div>
-
-      {[
-        {
-          title: 'Taux de change', icon: <Settings2 size={16} />, fields: [
-            { label: 'EUR → XOF', value: '655.957' },
-            { label: 'USD → XOF', value: '607.50' },
-          ]
-        },
-        {
-          title: 'Informations de la boutique', icon: <Settings2 size={16} />, fields: [
-            { label: 'Nom', value: 'DJBC Duty Free Ouagadougou' },
-            { label: 'NIF', value: 'BF-2024-00123456' },
-            { label: 'Adresse', value: 'Aéroport International de Ouagadougou' },
-            { label: 'Téléphone', value: '+226 25 30 65 00' },
-          ]
-        },
-        {
-          title: 'Message ticket de caisse', icon: <Settings2 size={16} />, fields: [
-            { label: 'Message d\'accueil (ligne 1)', value: 'Bienvenue — Welcome' },
-            { label: 'Message d\'accueil (ligne 2)', value: 'Zone de transit international' },
-            { label: 'Message de politesse', value: 'Merci. Bon voyage — Thank you. Safe travels.' },
-          ]
-        },
-        {
-          title: 'Seuils d\'alerte stock', icon: <Settings2 size={16} />, fields: [
-            { label: 'Seuil alerte réapprovisionnement', value: '10 unités' },
-            { label: 'Délai apurement sommier (jours)', value: '30' },
-          ]
-        },
-      ].map(section => (
-        <div key={section.title} className="card" style={{ padding: '24px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: 'var(--text-2)' }}>{section.icon}</span>
-              <div className="serif" style={{ fontSize: 16, fontWeight: 600 }}>{section.title}</div>
+      {form && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <form onSubmit={save} className="card" style={{ width: '100%', maxWidth: 460, padding: 24 }}>
+            <h3 style={{ marginBottom: 6, fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>
+              {form.id ? 'Modifier les données passagers' : 'Saisir les données passagers'}
+            </h3>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 18 }}>Nombre d'embarquements du mois communiqué par l'aéroport.</p>
+            {error && <div style={{ marginBottom: 14, padding: '9px 12px', borderRadius: 4, background: 'var(--c-down-dim)', color: 'var(--c-down)', fontSize: 12 }}>{error}</div>}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <label style={{ flex: 1 }}>
+                <span className="section-label">Année</span>
+                <input type="number" required min={2000} max={2100} value={form.annee} disabled={!!form.id}
+                  onChange={e => setForm({ ...form, annee: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+              <label style={{ flex: 1 }}>
+                <span className="section-label">Mois</span>
+                <select value={form.mois} disabled={!!form.id} onChange={e => setForm({ ...form, mois: Number(e.target.value) })} style={{ width: '100%' }}>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleDateString('fr-FR', { month: 'long' })}</option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <button className="btn btn-outline" style={{ fontSize: 11, padding: '5px 12px' }}>Modifier</button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {section.fields.map(f => (
-              <div key={f.label} className="card-inset" style={{ padding: '10px 14px' }}>
-                <div className="section-label" style={{ marginBottom: 4 }}>{f.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{f.value}</div>
-              </div>
-            ))}
-          </div>
+            <label style={{ display: 'block', marginBottom: 12 }}>
+              <span className="section-label">Nombre de passagers</span>
+              <input type="number" required min={1} value={form.nombre_passagers} placeholder="Ex : 45000"
+                onChange={e => setForm({ ...form, nombre_passagers: e.target.value })} style={{ width: '100%' }} />
+            </label>
+            <label style={{ display: 'block', marginBottom: 12 }}>
+              <span className="section-label">Source</span>
+              <input value={form.source} placeholder="Ex : Rapport mensuel aéroport"
+                onChange={e => setForm({ ...form, source: e.target.value })} style={{ width: '100%' }} />
+            </label>
+            <label style={{ display: 'block', marginBottom: 20 }}>
+              <span className="section-label">Notes</span>
+              <textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ width: '100%', resize: 'vertical' }} />
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button type="button" className="btn btn-outline" onClick={() => setForm(null)}>Annuler</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
+            </div>
+          </form>
         </div>
-      ))}
+      )}
     </div>
   );
 }

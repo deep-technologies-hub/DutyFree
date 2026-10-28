@@ -1,5 +1,5 @@
 {
-  "name": "DJBC Duty Free — Caisse",
+  "name": "Caisse — Duty Free Manager",
   "short_name": "Caisse DF",
   "description": "Application de caisse enregistreuse — Duty Free Aéroport de Ouagadougou",
   "start_url": "/",
@@ -8,7 +8,7 @@
   "theme_color": "#F5C842",
   "orientation": "landscape-primary",
   "icons": [
-    { "src": "/vite.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ],
   "categories": ["business", "productivity"],
   "lang": "fr"

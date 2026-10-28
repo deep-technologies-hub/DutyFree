@@ -3,6 +3,10 @@ import { useStockStore } from '../store/stockStore';
 import { Plus, ShoppingCart, X, Package, Calendar, FileText } from 'lucide-react';
 import type { Commande, LigneCommande, Fournisseur, Produit } from '../api';
 
+const STATUTS_COMMANDE: Record<string, string> = {
+  brouillon: 'Brouillon', envoyee: 'Envoyée', recue: 'Reçue', validee: 'Validée', annulee: 'Annulée',
+};
+
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(n);
 
 interface NewOrderForm {
@@ -283,12 +287,13 @@ DutyFree
     <div className="animate-in" style={{ padding: 32 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#fff', margin: 0 }}>Commandes fournisseurs</h1>
-          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 0' }}>Bons de commande et bordereaux de réception</p>
+          <div className="page-eyebrow">Approvisionnement</div>
+          <h1 className="page-title">Commandes fournisseurs</h1>
+          <p className="page-sub">Bons de commande et bordereaux de réception</p>
         </div>
         <button
           onClick={() => setShowNewOrderModal(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '8px 16px', color: 'var(--bg)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', alignSelf: 'flex-end', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '9px 16px', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
         >
           <Plus size={13} /> Nouvelle commande
         </button>
@@ -311,8 +316,8 @@ DutyFree
           <div className="card" style={{ width: '90%', maxWidth: 800, maxHeight: '90vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Nouvelle commande fournisseur</h2>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 0' }}>Créer un bon de commande</p>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Nouvelle commande fournisseur</h2>
+                <p className="page-sub">Créer un bon de commande</p>
               </div>
               <button
                 onClick={() => setShowNewOrderModal(false)}
@@ -377,7 +382,7 @@ DutyFree
                     border: 'none',
                     borderRadius: 6,
                     padding: '6px 12px',
-                    color: 'var(--bg)',
+                    color: '#fff',
                     fontSize: 11,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -538,7 +543,7 @@ DutyFree
                   border: 'none',
                   borderRadius: 6,
                   padding: '10px 20px',
-                  color: 'var(--bg)',
+                  color: '#fff',
                   fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -556,11 +561,11 @@ DutyFree
           <div key={o.id} className="card" style={{ padding: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{o.fournisseur_nom}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, fontFamily: 'IBM Plex Mono, monospace' }}>{o.id} · {new Date(o.created_at).toLocaleDateString('fr-FR')}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{o.fournisseur_nom}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, fontFamily: 'IBM Plex Mono, monospace' }}>{o.numero || `#${o.id}`} · {new Date(o.created_at).toLocaleDateString('fr-FR')}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <span className={`badge ${o.statut === 'validee' ? 'badge-ok' : o.statut === 'envoyee' ? 'badge-warn' : o.statut === 'recue' ? 'badge-info' : 'badge-info'}`}>{o.statut}</span>
+                <span className={`badge ${o.statut === 'validee' ? 'badge-ok' : o.statut === 'envoyee' ? 'badge-warn' : o.statut === 'recue' ? 'badge-info' : 'badge-info'}`}>{STATUTS_COMMANDE[o.statut] ?? o.statut}</span>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)', fontFamily: 'IBM Plex Mono, monospace', marginTop: 6 }}>{fmt(o.montant_total)} {o.devise}</div>
               </div>
             </div>
@@ -584,7 +589,7 @@ DutyFree
               </tbody>
             </table>
             {o.notes && (
-              <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(245,200,66,0.06)', borderRadius: 6, fontSize: 11, color: 'var(--accent)' }}>
+              <div style={{ marginTop: 12, padding: '8px 12px', background: 'var(--accent-dim)', borderRadius: 6, fontSize: 11, color: 'var(--accent)' }}>
                 📝 {o.notes}
               </div>
             )}
@@ -592,7 +597,7 @@ DutyFree
               {o.statut === 'brouillon' && (
                 <button
                   onClick={() => handleSendToSupplier(o)}
-                  style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '7px 14px', color: 'var(--bg)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '7px 14px', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
                   Envoyer au fournisseur
                 </button>
@@ -640,8 +645,8 @@ DutyFree
           <div className="card" style={{ width: '90%', maxWidth: 700, maxHeight: '90vh', overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Détails de la commande</h2>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 0' }}>{selectedOrder.numero}</p>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Détails de la commande</h2>
+                <p className="page-sub">{selectedOrder.numero}</p>
               </div>
               <button
                 onClick={() => setShowDetailsModal(false)}
@@ -675,7 +680,7 @@ DutyFree
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 12 }}>Produits commandés</h3>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Produits commandés</h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--surface-2)' }}>
@@ -710,8 +715,8 @@ DutyFree
 
             {selectedOrder.notes && (
               <div style={{ marginBottom: 24 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 8 }}>Notes</h3>
-                <div style={{ padding: '12px', background: 'rgba(245,200,66,0.06)', borderRadius: 6, fontSize: 12, color: 'var(--accent)' }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Notes</h3>
+                <div style={{ padding: '12px', background: 'var(--accent-dim)', borderRadius: 6, fontSize: 12, color: 'var(--accent)' }}>
                   📝 {selectedOrder.notes}
                 </div>
               </div>
@@ -729,7 +734,7 @@ DutyFree
                     border: 'none',
                     borderRadius: 6,
                     padding: '10px 20px',
-                    color: 'var(--bg)',
+                    color: '#fff',
                     fontSize: 12,
                     fontWeight: 700,
                     cursor: 'pointer'
@@ -809,8 +814,8 @@ DutyFree
           <div className="card" style={{ width: '90%', maxWidth: 800, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottom: '1px solid var(--border-2)', flexShrink: 0 }}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Bordereau de Réception</h2>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 0' }}>Commande {receivingOrder.numero}</p>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Bordereau de Réception</h2>
+                <p className="page-sub">Commande {receivingOrder.numero}</p>
               </div>
               <button
                 onClick={() => setReceivingOrder(null)}
@@ -843,7 +848,7 @@ DutyFree
                 />
               </div>
 
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 12 }}>Marchandises reçues</h3>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Marchandises reçues</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {receptionForm.lignes.map((ligne, index) => {
                   const totalM = receptionForm.lignes.reduce((sum, l) => sum + (parseInt(l.quantite_recue||'0') * l.prix_unitaire), 0);

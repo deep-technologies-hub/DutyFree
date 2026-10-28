@@ -1,66 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Download, Tag, Package } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Download, Tag } from 'lucide-react';
 import { useStockStore } from '../store/stockStore';
+import { stockApi, type ApiError, type Categorie } from '../api';
+import { downloadCsv } from '../utils/csv';
 
-const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
-const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)} M` : fmt(n);
-
-interface Category {
-  id: number;
-  nom: string;
-  description: string;
-  code: string;
-  couleur: string;
-  icone: string;
-  actif: boolean;
-  nombre_produits: number;
-  ca_estime: number;
-  created_at: string;
-  updated_at: string;
-}
+const emptyForm = { nom: '', description: '', code: '', couleur: '#3D75C4', icone: 'tag' };
 
 export default function CategoriesPage() {
-  const { products, fetchProducts } = useStockStore();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { categories, fetchCategories, fetchProducts } = useStockStore();
+  const [loading, setLoading] = useState(categories.length === 0);
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [formData, setFormData] = useState({ nom: '', description: '', code: '', couleur: '#3D75C4', icone: 'tag' });
+  const [editingCategory, setEditingCategory] = useState<Categorie | null>(null);
+  const [formData, setFormData] = useState(emptyForm);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    // Generate categories from products using their categorie property
-    const categoryMap = new Map<string, { count: number; totalCA: number }>();
-
-    products.forEach(product => {
-      const catName = product.categorie || 'Non catégorisé';
-      const existing = categoryMap.get(catName) || { count: 0, totalCA: 0 };
-      categoryMap.set(catName, {
-        count: existing.count + 1,
-        totalCA: existing.totalCA + (Number(product.prix_xof) || 0)
-      });
-    });
-
-    const apiCategories: Category[] = Array.from(categoryMap.entries()).map(([name, stats], index) => {
-      const categoryName = typeof name === 'string' ? name : 'Non catégorisé';
-      return {
-        id: index + 1,
-        nom: categoryName,
-        code: categoryName.substring(0, 8).toUpperCase(),
-        description: `${stats.count} produit${stats.count > 1 ? 's' : ''} dans cette catégorie`,
-        couleur: ['#EA580C', '#14B8A6', '#F59E0B', '#3B82F6', '#8B5CF6', '#E53E3E'][index % 6],
-        icone: 'tag',
-        nombre_produits: stats.count,
-        ca_estime: stats.totalCA,
-        actif: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-    });
-
-    setCategories(apiCategories);
-    setLoading(false);
-  }, [products]);
+  useEffect(() => { fetchCategories().finally(() => setLoading(false)); }, [fetchCategories]);
 
   const filteredCategories = categories.filter(cat =>
     cat.nom.toLowerCase().includes(search.toLowerCase()) ||
@@ -68,41 +23,29 @@ export default function CategoriesPage() {
   );
 
   const totalProducts = categories.reduce((sum, cat) => sum + (Number(cat.nombre_produits) || 0), 0);
-  const totalCA = categories.reduce((sum, cat) => sum + (Number(cat.ca_estime) || 0), 0);
+  const sansProduit = categories.filter(cat => !cat.nombre_produits).length;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingCategory) {
-      // Update existing category
-      setCategories(prev => prev.map(cat =>
-        cat.id === editingCategory.id
-          ? { ...cat, ...formData }
-          : cat
-      ));
-    } else {
-      // Create new category
-      const newCategory: Category = {
-        id: Date.now(),
-        nom: formData.nom,
-        description: formData.description,
-        code: formData.code,
-        couleur: formData.couleur,
-        icone: formData.icone,
-        actif: true,
-        nombre_produits: 0,
-        ca_estime: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      setCategories(prev => [...prev, newCategory]);
-    }
-
+  const closeModal = () => {
     setShowCreateModal(false);
     setEditingCategory(null);
-    setFormData({ nom: '', description: '', code: '', couleur: '#3D75C4', icone: 'tag' });
+    setFormData(emptyForm);
+    setError('');
   };
 
-  const handleEdit = (category: Category) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    try {
+      if (editingCategory) await stockApi.categories.update(editingCategory.id, formData);
+      else await stockApi.categories.create(formData);
+      await fetchCategories();
+      closeModal();
+    } catch (err) {
+      setError((err as ApiError).message || 'Enregistrement impossible');
+    }
+  };
+
+  const handleEdit = (category: Categorie) => {
     setEditingCategory(category);
     setFormData({
       nom: category.nom,
@@ -114,27 +57,34 @@ export default function CategoriesPage() {
     setShowCreateModal(true);
   };
 
-  const handleDelete = (category: Category) => {
-    if (confirm(`Supprimer la catégorie "${category.nom}" ?`)) {
-      setCategories(prev => prev.filter(cat => cat.id !== category.id));
+  const handleDelete = async (category: Categorie) => {
+    const avertissement = category.nombre_produits
+      ? `\n\n${category.nombre_produits} produit(s) passeront « sans catégorie ».`
+      : '';
+    if (!confirm(`Supprimer la catégorie "${category.nom}" ?${avertissement}`)) return;
+    try {
+      await stockApi.categories.delete(category.id);
+      await Promise.all([fetchCategories(), fetchProducts()]);
+    } catch (err) {
+      alert((err as ApiError).message || 'Suppression impossible');
     }
   };
 
-  const handleToggleActive = (category: Category) => {
-    setCategories(prev => prev.map(cat =>
-      cat.id === category.id ? { ...cat, actif: !cat.actif } : cat
-    ));
-  };
+  const handleExport = () => downloadCsv(
+    `categories_${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Nom', 'Code', 'Description', 'Produits'],
+    categories.map(c => [c.nom, c.code, c.description, c.nombre_produits]),
+  );
 
   return (
     <div className="animate-in" style={{ padding: '32px' }}>
       {/* Header */}
       <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Gestion du catalogue</div>
+        <div className="page-eyebrow">Gestion du catalogue</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>Catégories</h1>
+          <h1 className="page-title">Catégories</h1>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-outline" style={{ gap: 6, fontSize: 12 }}>
+            <button onClick={handleExport} className="btn btn-outline" style={{ gap: 6, fontSize: 12 }}>
               <Download size={12} /> Exporter
             </button>
             <button
@@ -150,7 +100,7 @@ export default function CategoriesPage() {
       </div>
 
       {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
+      <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
         <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
           <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}>
             {categories.length}
@@ -165,15 +115,15 @@ export default function CategoriesPage() {
         </div>
         <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
           <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--c-info)', marginBottom: 8 }}>
-            {categories.filter(cat => cat.actif).length}
+            {categories.length ? (totalProducts / categories.length).toFixed(1) : 0}
           </div>
-          <div className="section-label">Actives</div>
+          <div className="section-label">Produits / catégorie</div>
         </div>
         <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
           <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--c-up)', marginBottom: 8 }}>
-            {fmtM(totalCA)} XOF
+            {sansProduit}
           </div>
-          <div className="section-label">CA estimé</div>
+          <div className="section-label">Catégories vides</div>
         </div>
       </div>
 
@@ -212,7 +162,7 @@ export default function CategoriesPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-          {filteredCategories.map((category, index) => (
+          {filteredCategories.map((category) => (
             <div key={category.id} className="card" style={{ padding: '20px', position: 'relative', overflow: 'hidden' }}>
               {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -246,19 +196,6 @@ export default function CategoriesPage() {
                     title="Modifier"
                   >
                     <Edit2 size={12} />
-                  </button>
-                  <button
-                    onClick={() => handleToggleActive(category)}
-                    className="btn btn-ghost"
-                    style={{
-                      padding: '6px 8px',
-                      fontSize: 11,
-                      color: category.actif ? 'var(--c-up)' : 'var(--text-3)',
-                      background: category.actif ? 'var(--c-up-dim)' : 'transparent'
-                    }}
-                    title={category.actif ? "Désactiver" : "Activer"}
-                  >
-                    {category.actif ? '✓' : '○'}
                   </button>
                   <button
                     onClick={() => handleDelete(category)}
@@ -318,16 +255,6 @@ export default function CategoriesPage() {
                   />
                 </div>
               </div>
-
-              {/* Status Badge */}
-              <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                <span
-                  className={`badge ${category.actif ? 'badge-up' : 'badge-gray'}`}
-                  style={{ fontSize: 10 }}
-                >
-                  {category.actif ? 'Actif' : 'Inactif'}
-                </span>
-              </div>
             </div>
           ))}
         </div>
@@ -358,11 +285,7 @@ export default function CategoriesPage() {
                 {editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
               </h2>
               <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setEditingCategory(null);
-                  setFormData({ nom: '', description: '', code: '', couleur: '#3D75C4', icone: 'tag' });
-                }}
+                onClick={closeModal}
                 style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}
               >
                 ×
@@ -370,6 +293,9 @@ export default function CategoriesPage() {
             </div>
 
             <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
+              {error && (
+                <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 6, background: 'var(--c-down-dim)', color: 'var(--c-down)', fontSize: 12 }}>{error}</div>
+              )}
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
                   Nom de la catégorie *
@@ -470,11 +396,7 @@ export default function CategoriesPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setEditingCategory(null);
-                    setFormData({ nom: '', description: '', code: '', couleur: '#3D75C4', icone: 'tag' });
-                  }}
+                  onClick={closeModal}
                   className="btn btn-outline"
                   style={{ padding: '8px 20px' }}
                 >

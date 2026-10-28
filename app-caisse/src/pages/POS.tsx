@@ -35,7 +35,7 @@ export default function POS() {
   const categories = useMemo(() => {
     const uniqueCategories = new Set(['Tous']);
     products.forEach(p => {
-      if (p.categorie) uniqueCategories.add(p.categorie);
+      if (p.categorie_nom) uniqueCategories.add(p.categorie_nom);
     });
     return Array.from(uniqueCategories);
   }, [products]);
@@ -68,7 +68,7 @@ export default function POS() {
   const filtered = products.filter(p => {
     const q = search.toLowerCase();
     const ok = !q || p.nom.toLowerCase().includes(q) || p.code_barres.includes(search) || p.code.toLowerCase().includes(q);
-    return ok && (cat === 'Tous' || p.categorie === cat);
+    return ok && (cat === 'Tous' || p.categorie_nom === cat);
   });
 
   const total = cartTotal();
@@ -100,7 +100,7 @@ export default function POS() {
         <div style={{ display: 'flex', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, overflow: 'hidden' }}>
           {CURS.map(c => (
             <button key={c} onClick={() => setActiveCurrency(c)}
-              style={{ padding: '5px 14px', border: 'none', background: c === activeCurrency ? 'var(--accent)' : 'transparent', color: c === activeCurrency ? '#0C0D11' : 'var(--text-3)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'IBM Plex Mono,monospace', transition: 'all 0.1s' }}>
+              style={{ padding: '5px 14px', border: 'none', background: c === activeCurrency ? 'var(--accent)' : 'transparent', color: c === activeCurrency ? '#fff' : 'var(--text-3)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'IBM Plex Mono,monospace', transition: 'all 0.1s' }}>
               {c}
             </button>
           ))}
@@ -179,7 +179,7 @@ export default function POS() {
                     </div>
                     {/* Badge cat + qty */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
-                      <span style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--text-3)', background: 'var(--surface-3)', padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{String(p.categorie || '').substring(0, 5)}</span>
+                      {p.categorie_nom ? <span style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--text-3)', background: 'var(--surface-3)', padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.06em', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.categorie_nom}</span> : <span />}
                       {inCart && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', fontFamily: 'IBM Plex Mono,monospace' }}>×{inCart.quantity}</span>}
                       {out && <span className="badge badge-red" style={{ fontSize: 8.5, padding: '1px 5px' }}>Rupture</span>}
                     </div>

@@ -41,9 +41,11 @@ export default function Reporting() {
   const [axe, setAxe] = useState('CA Total');
   const dataKey = axe === 'Tickets' ? 'tickets' : 'ca';
 
-  // Use API data instead of mock
-  const dailyCA = dashboardData?.ca_daily || [];
-  const caByCategory = dashboardData?.ca_by_categorie || [];
+  // Montants DRF (chaînes) convertis en nombres ; libellé court du jour pour l'axe
+  const dailyCA = (dashboardData?.ca_daily || []).map(d => ({
+    ...d, ca: Number(d.ca), date: new Date(d.jour).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+  }));
+  const caByCategory = (dashboardData?.ca_by_categorie || []).map(c => ({ ...c, ca: Number(c.ca) }));
   const passengerData = tauxCapture;
 
   const total30 = dailyCA.reduce((s, d) => s + (d.ca || 0), 0);
@@ -54,8 +56,8 @@ export default function Reporting() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 22 }}>
         <div>
-          <div className="section-label" style={{ marginBottom: 4 }}>Analyse commerciale</div>
-          <h1 style={{ fontFamily: 'Playfair Display,Georgia,serif', fontSize: 24, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.01em' }}>Reporting</h1>
+          <div className="page-eyebrow">Analyse commerciale</div>
+          <h1 className="page-title">Reporting</h1>
         </div>
         <button className="btn btn-ghost btn-sm" style={{ gap: 5 }}><Download size={12} /> Exporter Excel</button>
       </div>

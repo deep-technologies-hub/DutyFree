@@ -79,9 +79,22 @@
   --r-lg: 14px;
 
   /* ─ Ombres */
-  --sh-sm: 0 1px 3px rgba(0,0,0,0.4);
-  --sh:    0 4px 16px rgba(0,0,0,0.5);
-  --sh-lg: 0 12px 40px rgba(0,0,0,0.65);
+  /* Ombres douces adaptées au thème clair */
+  --sh-sm: 0 1px 2px rgba(15,23,42,0.06);
+  --sh:    0 4px 14px rgba(15,23,42,0.08);
+  --sh-lg: 0 18px 48px rgba(15,23,42,0.18);
+
+  /* Alias hérités de l'ancien thème sombre : redirigés vers la palette actuelle */
+  --gold:       var(--accent);
+  --amber:      var(--c-warn);
+  --amber-dim:  var(--c-warn-dim);
+  --green:      var(--c-up);
+  --green-dim:  var(--c-up-dim);
+  --red:        var(--c-down);
+  --blue:       var(--c-info);
+  --muted:      var(--text-3);
+  --slate:      var(--text);
+  --surface-1:  var(--surface-2);
 }
 
 /* ── Base ──────────────────────────────────────────────────────── */
@@ -263,7 +276,9 @@ body {
 }
 
 /* ── Inputs ─────────────────────────────────────────────────────── */
+input:not([type]),
 input[type="text"],
+input[type="date"],
 input[type="number"],
 input[type="email"],
 input[type="password"],
@@ -502,3 +517,86 @@ input[type="number"] { font-family: "IBM Plex Mono", monospace; }
 
 
 /* Removed legacy compat aliases */
+
+/* ── En-tête de page (identique dans les 3 applications) ───────── */
+.page-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+.page-title {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin: 0;
+}
+.page-sub {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 6px 0 0;
+}
+.serif { font-family: "Playfair Display", Georgia, serif; font-weight: 500; }
+
+/* État vide (graphiques et listes sans données) */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 160px;
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: center;
+}
+.empty-state strong { color: var(--text-2); font-size: 13px; font-weight: 600; }
+
+/* Accessibilité : focus clavier visible partout */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Bloc utilisateur en pied de barre latérale (sur fond accent) */
+.sidebar-user { padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.18); margin-top: auto; }
+.sidebar-user-row { display: flex; align-items: center; gap: 10px; }
+.sidebar-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(255,255,255,0.95); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.sidebar-user-name { font-size: 12px; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-user-role { font-size: 10px; color: rgba(255,255,255,0.78); letter-spacing: 0.02em; }
+.sidebar-logout {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28);
+  color: #fff; border-radius: var(--r-sm); padding: 7px 10px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; transition: background 0.14s;
+}
+.sidebar-logout:hover { background: rgba(255,255,255,0.22); }
+
+/* Logo de la barre latérale : pastille blanche sur fond accent */
+.sidebar-logo-icon {
+  width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
+  background: #fff; color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Écrans moyens (tablette, petit portable) : barre latérale en rail d'icônes ── */
+@media (max-width: 1100px) {
+  .sidebar { width: 64px; position: sticky; top: 0; height: 100vh; }
+  .sidebar-logo { padding: 16px 0 12px; display: flex; justify-content: center; }
+  .sidebar-logo-text, .nav-label, .nav-section, .sidebar-user-name, .sidebar-user-role, .sidebar-logout-label, .sidebar-offline { display: none; }
+  .nav-item { justify-content: center; padding: 10px 0; margin: 2px 8px; }
+  .nav-item svg { width: 17px; height: 17px; }
+  .sidebar-user { padding: 12px 8px; }
+  .sidebar-user-row { flex-direction: column; gap: 8px; }
+  .sidebar-logout { padding: 7px; width: 100%; }
+  /* Grilles de cartes : passage à la ligne plutôt que débordement */
+  .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important; }
+  .stack-md { grid-template-columns: 1fr !important; }
+}

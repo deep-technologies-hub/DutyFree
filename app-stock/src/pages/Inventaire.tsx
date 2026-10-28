@@ -15,15 +15,11 @@ type InventoryLine = {
 
 type SessionStatus = 'idle' | 'en_cours' | 'termine';
 
-const CATEGORIES = ['Tous', 'alcools', 'parfums', 'tabac', 'cosmetiques', 'confiserie', 'accessoires'];
-const CAT_LABELS: Record<string, string> = {
-  alcools: 'Alcools', parfums: 'Parfums', tabac: 'Tabac',
-  cosmetiques: 'Cosmétiques', confiserie: 'Confiserie', accessoires: 'Accessoires',
-  alimentaire: 'Alimentaire',
-};
+const catNom = (p: { categorie_nom?: string }) => p.categorie_nom || 'Sans catégorie';
 
 export default function Inventaire() {
   const { products, fetchProducts } = useStockStore();
+  const CATEGORIES = useMemo(() => ['Tous', ...new Set(products.map(catNom))], [products]);
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [lines, setLines] = useState<InventoryLine[]>([]);
   const [filterCat, setFilterCat] = useState('Tous');
@@ -36,7 +32,7 @@ export default function Inventaire() {
   const startSession = () => {
     const newLines: InventoryLine[] = products
       .filter(p => p.stock > 0 || true) // inclure même les ruptures
-      .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
+      .sort((a, b) => catNom(a).localeCompare(catNom(b)) || a.nom.localeCompare(b.nom))
       .map(p => ({ produit: p, theorique: p.stock, reel: '', valide: false }));
     setLines(newLines);
     setStatus('en_cours');
@@ -71,7 +67,7 @@ export default function Inventaire() {
   // Filtrage
   const filtered = useMemo(() => {
     return lines.filter(l => {
-      const matchCat = filterCat === 'Tous' || l.produit.categorie === filterCat;
+      const matchCat = filterCat === 'Tous' || catNom(l.produit) === filterCat;
       const matchEcart = !filterEcart || (l.reel !== '' && Number(l.reel) !== l.theorique);
       return matchCat && matchEcart;
     });
@@ -81,8 +77,9 @@ export default function Inventaire() {
   const grouped = useMemo(() => {
     const g: Record<string, InventoryLine[]> = {};
     filtered.forEach(l => {
-      if (!g[l.produit.categorie]) g[l.produit.categorie] = [];
-      g[l.produit.categorie].push(l);
+      const cat = catNom(l.produit);
+      if (!g[cat]) g[cat] = [];
+      g[cat].push(l);
     });
     return g;
   }, [filtered]);
@@ -130,20 +127,20 @@ export default function Inventaire() {
     return (
       <div style={{ padding: '40px', maxWidth: 900, margin: '0 auto' }}>
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 8 }}>
+          <div className="page-eyebrow">
             Gestion du stock
           </div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Inventaire physique</h1>
+          <h1 className="page-title">Inventaire physique</h1>
           <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 8 }}>
             Comptage physique du stock pour identifier les écarts entre le stock théorique et le stock réel.
           </p>
         </div>
 
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 12, padding: 32, marginBottom: 24 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 28 }}>
+          <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 28 }}>
             {[
               { label: 'Produits à inventorier', value: products.length },
-              { label: 'Catégories', value: new Set(products.map(p => p.categorie)).size },
+              { label: 'Catégories', value: new Set(products.map(catNom)).size },
               { label: 'Dernier inventaire', value: 'Non enregistré' },
             ].map(k => (
               <div key={k.label} style={{ padding: '16px 20px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--surface-2)' }}>
@@ -153,9 +150,9 @@ export default function Inventaire() {
             ))}
           </div>
 
-          <div style={{ background: 'rgba(245,200,66,0.06)', border: '1px solid rgba(245,200,66,0.2)', borderRadius: 8, padding: '14px 18px', marginBottom: 24, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 8, padding: '14px 18px', marginBottom: 24, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <AlertTriangle size={16} color="var(--accent)" style={{ marginTop: 1, flexShrink: 0 }} />
-            <div style={{ fontSize: 12, color: '#D4B84A', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>
               <strong>Recommandation :</strong> Réaliser l'inventaire en dehors des heures d'activité.
               Les écarts constatés créeront automatiquement des mouvements de type "Inventaire" et mettront à jour les sommiers DJBC.
             </div>
@@ -163,7 +160,7 @@ export default function Inventaire() {
 
           <button
             onClick={startSession}
-            style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '14px 32px', color: 'var(--bg)', fontWeight: 800, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+            style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '14px 32px', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
           >
             <ClipboardList size={18} /> Démarrer la session d'inventaire
           </button>
@@ -183,7 +180,7 @@ export default function Inventaire() {
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Enregistré le {savedAt}</div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
           {[
             { label: 'Lignes saisies', value: stats.saisies, color: 'var(--text)' },
             { label: 'Lignes validées', value: stats.validees, color: 'var(--c-up)' },
@@ -250,10 +247,10 @@ export default function Inventaire() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 6 }}>
+          <div className="page-eyebrow">
             Session en cours · {new Date().toLocaleDateString('fr-FR')}
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Inventaire physique</h1>
+          <h1 className="page-title">Inventaire physique</h1>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => setStatus('idle')} style={{ background: 'transparent', border: '1px solid var(--border-2)', borderRadius: 8, padding: '8px 16px', color: 'var(--text-3)', fontWeight: 600, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -288,13 +285,13 @@ export default function Inventaire() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         {CATEGORIES.map(c => (
           <button key={c} onClick={() => setFilterCat(c)}
-            style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', borderColor: filterCat === c ? 'var(--accent)' : 'var(--border-2)', background: filterCat === c ? 'rgba(245,200,66,0.1)' : 'transparent', color: filterCat === c ? 'var(--accent)' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-            {c === 'Tous' ? 'Tous' : CAT_LABELS[c] || c}
+            style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', borderColor: filterCat === c ? 'var(--accent)' : 'var(--border-2)', background: filterCat === c ? 'var(--accent-dim)' : 'transparent', color: filterCat === c ? 'var(--accent)' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+            {c}
           </button>
         ))}
         <div style={{ width: 1, height: 20, background: 'var(--border-2)' }} />
         <button onClick={() => setFilterEcart(!filterEcart)}
-          style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', borderColor: filterEcart ? 'var(--c-down)' : 'var(--border-2)', background: filterEcart ? 'rgba(248,113,113,0.1)' : 'transparent', color: filterEcart ? 'var(--c-down)' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', borderColor: filterEcart ? 'var(--c-down)' : 'var(--border-2)', background: filterEcart ? 'var(--c-down-dim)' : 'transparent', color: filterEcart ? 'var(--c-down)' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
           ⚠ Écarts seulement
         </button>
       </div>
@@ -312,9 +309,9 @@ export default function Inventaire() {
               style={{ padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: 'var(--surface-2)', borderBottom: expanded ? '1px solid var(--surface-2)' : 'none' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{CAT_LABELS[cat] || cat}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{cat}</span>
                 <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{catLines.length} produit{catLines.length > 1 ? 's' : ''}</span>
-                {catEcarts > 0 && <span style={{ fontSize: 10, background: 'rgba(245,200,66,0.15)', color: 'var(--accent)', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>⚠ {catEcarts} écart{catEcarts > 1 ? 's' : ''}</span>}
+                {catEcarts > 0 && <span style={{ fontSize: 10, background: 'var(--accent-border)', color: 'var(--accent)', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>⚠ {catEcarts} écart{catEcarts > 1 ? 's' : ''}</span>}
                 {catValides > 0 && <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.15)', color: 'var(--c-up)', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>✓ {catValides}</span>}
               </div>
               {expanded ? <ChevronUp size={15} color="var(--text-3)" /> : <ChevronDown size={15} color="var(--text-3)" />}
@@ -333,7 +330,7 @@ export default function Inventaire() {
                   {catLines.map(line => {
                     const ecart = line.reel !== '' ? Number(line.reel) - line.theorique : null;
                     const hasEcart = ecart !== null && ecart !== 0;
-                    const rowBg = line.valide ? 'rgba(16,185,129,0.04)' : hasEcart ? 'rgba(245,200,66,0.04)' : 'transparent';
+                    const rowBg = line.valide ? 'rgba(16,185,129,0.04)' : hasEcart ? 'var(--accent-dim)' : 'transparent';
                     return (
                       <tr key={line.produit.id} style={{ borderTop: '1px solid var(--surface-2)', background: rowBg }}>
                         <td style={{ padding: '10px 16px', fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: 'var(--text-3)' }}>{line.produit.code}</td>
@@ -376,7 +373,7 @@ export default function Inventaire() {
                             <button
                               onClick={() => line.reel !== '' && validateLine(line.produit.id)}
                               disabled={line.reel === ''}
-                              style={{ background: line.reel !== '' ? 'rgba(245,200,66,0.15)' : 'transparent', border: `1px solid ${line.reel !== '' ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 6, padding: '5px 12px', color: line.reel !== '' ? 'var(--accent)' : 'var(--border-2)', fontSize: 11, fontWeight: 600, cursor: line.reel !== '' ? 'pointer' : 'not-allowed' }}>
+                              style={{ background: line.reel !== '' ? 'var(--accent-border)' : 'transparent', border: `1px solid ${line.reel !== '' ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 6, padding: '5px 12px', color: line.reel !== '' ? 'var(--accent)' : 'var(--border-2)', fontSize: 11, fontWeight: 600, cursor: line.reel !== '' ? 'pointer' : 'not-allowed' }}>
                               Valider
                             </button>
                           )}

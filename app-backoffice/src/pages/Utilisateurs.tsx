@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 
 const ROLES = [
-  { value: 'admin', label: 'Administrateur', color: 'var(--accent)', bg: 'rgba(245,200,66,0.12)' },
-  { value: 'superviseur', label: 'Superviseur', color: 'var(--c-info)', bg: 'rgba(96,165,250,0.12)' },
-  { value: 'stock_manager', label: 'Stock Manager', color: '#A78BFA', bg: 'rgba(167,139,250,0.12)' },
+  { value: 'admin', label: 'Administrateur', color: 'var(--accent)', bg: 'var(--accent-dim)' },
+  { value: 'superviseur', label: 'Superviseur', color: 'var(--c-info)', bg: 'var(--c-info-dim)' },
+  { value: 'stock_manager', label: 'Stock Manager', color: '#7C3AED', bg: 'rgba(124,58,237,0.10)' },
   { value: 'caissier', label: 'Caissier', color: 'var(--c-up)', bg: 'rgba(52,211,153,0.12)' },
 ];
 const roleInfo = (role: string) => ROLES.find(r => r.value === role) || { label: role, color: 'var(--text-2)', bg: 'rgba(156,163,175,0.12)' };
@@ -82,23 +82,20 @@ export function UtilisateursPage() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const flash = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(''), 3000); };
 
   const loadUsers = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const res = await utilisateursApi.list();
       setUsers(res.results);
     } catch {
-      // fallback mock
-      setUsers([
-        { id: 1, username: 'admin', first_name: 'Admin', last_name: 'Koné', full_name: 'Admin Koné', email: 'admin@djbc-df.bf', role: 'admin', register_id: '', phone: '', is_active: true, last_login: '2025-06-15T08:00:00' },
-        { id: 2, username: 'aminata', first_name: 'Aminata', last_name: 'Sawadogo', full_name: 'Aminata Sawadogo', email: 'a.sawadogo@djbc-df.bf', role: 'caissier', register_id: 'CAISSE-01', phone: '+226 70 00 00 01', is_active: true, last_login: '2025-06-15T07:45:00' },
-        { id: 3, username: 'issouf', first_name: 'Issouf', last_name: 'Compaoré', full_name: 'Issouf Compaoré', email: 'i.compaore@djbc-df.bf', role: 'caissier', register_id: 'CAISSE-02', phone: '+226 70 00 00 02', is_active: true, last_login: '2025-06-15T07:50:00' },
-        { id: 4, username: 'marie', first_name: 'Marie', last_name: 'Ouédraogo', full_name: 'Marie Ouédraogo', email: 'm.ouedraogo@djbc-df.bf', role: 'superviseur', register_id: 'SUP-01', phone: '+226 70 00 00 03', is_active: true, last_login: '2025-06-15T09:00:00' },
-      ]);
+      setUsers([]);
+      setLoadError('Impossible de charger les utilisateurs. Vérifiez la connexion puis rechargez la page.');
     } finally { setLoading(false); }
   };
 
@@ -202,7 +199,7 @@ export function UtilisateursPage() {
         </div>
         <div style={{ padding: '22px 24px' }}>
           {error && (
-            <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#DC2626', display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ background: 'var(--c-down-dim)', border: '1px solid var(--c-down-bd)', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#DC2626', display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
               <AlertTriangle size={13} /> {error}
             </div>
           )}
@@ -227,6 +224,9 @@ export function UtilisateursPage() {
   return (
     <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Toast */}
+      {loadError && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 6, background: 'var(--c-down-dim)', color: 'var(--c-down)', fontSize: 13 }}>{loadError}</div>
+      )}
       {successMsg && (
         <div style={{ position: 'fixed', top: 24, right: 24, zIndex: 9999, background: 'var(--c-up)', borderRadius: 7, padding: '11px 18px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#fff', boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }}>
           <CheckCircle size={15} /> {successMsg}
@@ -235,9 +235,9 @@ export function UtilisateursPage() {
 
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Accès & Sécurité</div>
+        <div className="page-eyebrow">Accès & Sécurité</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>Utilisateurs</h1>
+          <h1 className="page-title">Utilisateurs</h1>
           <button onClick={() => { setCreateForm(emptyCreate()); setError(''); setCreateModal(true); }} className="btn btn-primary" style={{ gap: 6 }}>
             <UserPlus size={13} /> Nouvel utilisateur
           </button>
@@ -246,7 +246,7 @@ export function UtilisateursPage() {
       </div>
 
       {/* KPIs par rôle */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, marginBottom: 28, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+      <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, marginBottom: 28, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
         {statsByRole.map(r => (
           <div key={r.value} style={{ background: 'var(--surface)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -270,7 +270,7 @@ export function UtilisateursPage() {
         <div style={{ display: 'flex', gap: 6 }}>
           {['Tous', ...ROLES.map(r => r.value)].map(r => (
             <button key={r} onClick={() => setRoleFilter(r)}
-              style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', borderColor: roleFilter === r ? 'var(--bg)' : 'var(--border)', background: roleFilter === r ? 'var(--bg)' : 'transparent', color: roleFilter === r ? '#fff' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', borderColor: roleFilter === r ? 'var(--accent)' : 'var(--border)', background: roleFilter === r ? 'var(--accent-dim)' : 'transparent', color: roleFilter === r ? 'var(--accent)' : 'var(--text-3)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
               {r === 'Tous' ? 'Tous' : ROLES.find(x => x.value === r)?.label || r}
             </button>
           ))}
@@ -347,7 +347,7 @@ export function UtilisateursPage() {
                           <Shield size={12} />
                         </button>
                         {u.role !== 'admin' && (
-                          <button onClick={() => setDeleteModal(u)} title="Supprimer" style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 4, padding: '5px 8px', cursor: 'pointer', color: 'var(--c-down)', display: 'flex' }}>
+                          <button onClick={() => setDeleteModal(u)} title="Supprimer" style={{ background: 'var(--c-down-dim)', border: '1px solid var(--c-down-bd)', borderRadius: 4, padding: '5px 8px', cursor: 'pointer', color: 'var(--c-down)', display: 'flex' }}>
                             <Trash2 size={12} />
                           </button>
                         )}
@@ -383,7 +383,7 @@ export function UtilisateursPage() {
               <Field label="PIN caisse (4-6 chiffres)" value={createForm.pin} onChange={v => setCreateField('pin', v)} placeholder="1234" />
             </div>
             <Field label="Mot de passe *" value={createForm.password} onChange={v => setCreateField('password', v)} placeholder="••••••••" type="password" required />
-            <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: 5, padding: '10px 14px', fontSize: 12, color: '#1E40AF' }}>
+            <div style={{ background: 'var(--c-info-dim)', border: '1px solid var(--c-info-bd)', borderRadius: 5, padding: '10px 14px', fontSize: 12, color: '#1E40AF' }}>
               ℹ Le PIN est utilisé par le caissier pour se connecter à l'app Caisse. Le mot de passe est pour la connexion web.
             </div>
           </div>

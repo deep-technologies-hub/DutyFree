@@ -90,7 +90,7 @@ export default function Login() {
             </div>
             <input type="text" value={orgInput} onChange={e => setOrgInput(e.target.value)} placeholder="ex : ma-boutique" autoFocus />
             <button type="submit" disabled={!orgInput.trim()}
-              style={{ padding: '12px', background: orgInput.trim() ? 'var(--accent)' : 'var(--surface-2)', border: 'none', borderRadius: 6, color: orgInput.trim() ? '#0C0D11' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: orgInput.trim() ? 'pointer' : 'not-allowed' }}>
+              style={{ padding: '12px', background: orgInput.trim() ? 'var(--accent)' : 'var(--surface-2)', border: 'none', borderRadius: 6, color: orgInput.trim() ? '#fff' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: orgInput.trim() ? 'pointer' : 'not-allowed' }}>
               Continuer
             </button>
           </form>
@@ -163,7 +163,7 @@ export default function Login() {
                 onMouseOver={e => (e.currentTarget.style.background = 'var(--surface-3)')}
                 onMouseOut={e => (e.currentTarget.style.background = 'var(--surface-2)')}>0</button>
               <button onClick={submit} disabled={submitting || pin.length < 4}
-                style={{ padding: '16px', background: pin.length >= 4 ? 'var(--accent)' : 'var(--surface-2)', border: 'none', borderRadius: 6, color: pin.length >= 4 ? '#0C0D11' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: pin.length >= 4 ? 'pointer' : 'not-allowed', transition: 'background 0.18s,color 0.18s' }}>
+                style={{ padding: '16px', background: pin.length >= 4 ? 'var(--accent)' : 'var(--surface-2)', border: 'none', borderRadius: 6, color: pin.length >= 4 ? '#fff' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: pin.length >= 4 ? 'pointer' : 'not-allowed', transition: 'background 0.18s,color 0.18s' }}>
                 {submitting ? '…' : 'OK'}
               </button>
             </div>

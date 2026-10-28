@@ -13,3 +13,6 @@ backend/media/produits/*/
 # Node
 node_modules/
 dist/
+
+# Sauvegardes de production (docker-compose.prod.yml)
+backups/

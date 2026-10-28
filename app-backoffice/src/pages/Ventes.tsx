@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useBackofficeStore } from '../store/backofficeStore';
+import { ventesApi, type ApiError, type VenteListItem } from '../api';
+import { downloadExcel, downloadPdf, venteXof, methodesVente, fmtDateHeure, fmtNombre } from '../utils/exports';
 import { Search, Download, Receipt, CreditCard, Banknote, Smartphone, SlidersHorizontal } from 'lucide-react';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
@@ -12,27 +14,61 @@ const METHOD_CONFIG: Record<string, { icon: React.ReactNode; label: string; colo
 };
 
 export default function Ventes() {
-  const { ventes, fetchVentes } = useBackofficeStore();
+  const { ventes, fetchVentes, user } = useBackofficeStore();
+  const boutique = user?.organisation?.nom || 'Duty Free';
   const [search, setSearch] = useState('');
   const [caisse, setCaisse] = useState('');
   const [method, setMethod] = useState('');
-  const [selectedTicket, setSelectedTicket] = useState<any>(null);
-
-  // Use API data instead of mock
-  const recentSales = ventes || [];
+  const [caisses, setCaisses] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<VenteListItem | null>(null);
 
   useEffect(() => {
-    fetchVentes();
-  }, [fetchVentes]);
+    ventesApi.caisses().then(setCaisses).catch(() => setCaisses([]));
+  }, []);
 
-  const filtered = recentSales.filter(s => {
-    if (search && !s.numero_ticket?.toLowerCase().includes(search.toLowerCase()) && !s.numero_caisse?.toLowerCase().includes(search.toLowerCase()) && !s.passager_nom?.toLowerCase().includes(search.toLowerCase())) return false;
-    if (caisse && !s.numero_caisse?.toLowerCase().includes(caisse.toLowerCase())) return false;
-    // TODO: Filter by payment method when available in API
-    return true;
-  });
+  const filtres = { search: search.trim(), numero_caisse: caisse, methode: method };
 
-  const totalCA = filtered.reduce((s, v) => s + (v.devise === 'XOF' ? +v.total : +v.total * 655.957), 0);
+  // Filtrage côté serveur (sur toutes les ventes, pas seulement la page chargée)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const qs = new URLSearchParams(Object.entries({ search: search.trim(), numero_caisse: caisse, methode: method }).filter(([, v]) => v)).toString();
+      fetchVentes(qs ? `?${qs}` : '');
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search, caisse, method, fetchVentes]);
+
+  const filtered = ventes || [];
+
+  const exporter = async (format: 'excel' | 'pdf') => {
+    setExporting(true);
+    try {
+      const toutes = await ventesApi.listAll(filtres);
+      const total = toutes.reduce((s, v) => s + venteXof(v), 0);
+      const rows = toutes.map(v => [
+        v.numero_ticket, fmtDateHeure(v.date_locale), v.numero_caisse, v.caissier_nom, v.nb_articles,
+        Math.round(venteXof(v)), methodesVente(v), v.passager_nom || '',
+      ]);
+      const headers = ['N° ticket', 'Date', 'Caisse', 'Vendeur', 'Articles', 'Montant XOF', 'Paiement', 'Passager'];
+      const base = { boutique, title: 'Ventes & tickets', filename: `ventes_${new Date().toISOString().slice(0, 10)}` };
+      if (format === 'excel') {
+        await downloadExcel({ ...base, filename: `${base.filename}.xlsx`, sheets: [{
+          name: 'Ventes', headers, rows, widths: [20, 18, 12, 22, 9, 14, 20, 22],
+          total: ['TOTAL', `${toutes.length} tickets`, '', '', '', Math.round(total)],
+        }] });
+      } else {
+        downloadPdf({ ...base, filename: `${base.filename}.pdf`, landscape: true, headers,
+          rows: rows.map(r => r.map((c, i) => (i === 5 ? fmtNombre(Number(c)) : c))),
+          total: ['TOTAL', `${toutes.length} tickets`, '', '', '', fmtNombre(total), '', ''] });
+      }
+    } catch (e) {
+      alert(`Export impossible : ${(e as ApiError).message ?? 'réessayez'}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const totalCA = filtered.reduce((s, v) => s + venteXof(v), 0);
   const avgTicket = filtered.length ? totalCA / filtered.length : 0;
   const withPass = filtered.filter(s => s.passager_nom).length;
 
@@ -42,20 +78,20 @@ export default function Ventes() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <div className="section-label" style={{ marginBottom: 5 }}>Transactions</div>
-          <h1 style={{ fontFamily: 'Cormorant, Georgia, serif', fontSize: 28, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.01em' }}>
+          <div className="page-eyebrow">Transactions</div>
+          <h1 className="page-title">
             Ventes & Tickets
           </h1>
         </div>
         <div style={{ display: 'flex', gap: 7 }}>
-          <button className="btn btn-ghost btn-sm" style={{ gap: 5 }}><Download size={12} /> Excel</button>
-          <button className="btn btn-ghost btn-sm" style={{ gap: 5 }}><Download size={12} /> PDF</button>
+          <button className="btn btn-ghost btn-sm" style={{ gap: 5 }} disabled={exporting} onClick={() => exporter('excel')}><Download size={12} /> Excel</button>
+          <button className="btn btn-ghost btn-sm" style={{ gap: 5 }} disabled={exporting} onClick={() => exporter('pdf')}><Download size={12} /> PDF</button>
         </div>
       </div>
       <hr className="rule" style={{ marginBottom: 20 }} />
 
       {/* KPI strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'var(--border)', borderRadius: 'var(--r)', overflow: 'hidden', marginBottom: 20, border: '1px solid var(--border)' }}>
+      <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'var(--border)', borderRadius: 'var(--r)', overflow: 'hidden', marginBottom: 20, border: '1px solid var(--border)' }}>
         {[
           { label: 'CA affiché', value: fmtM(totalCA) + ' XOF', color: 'var(--accent)' },
           { label: 'Transactions', value: String(filtered.length) },
@@ -78,8 +114,7 @@ export default function Ventes() {
         </div>
         <select value={caisse} onChange={e => setCaisse(e.target.value)} style={{ width: 160 }}>
           <option value="">Toutes les caisses</option>
-          <option value="CAISSE-01">CAISSE-01</option>
-          <option value="CAISSE-02">CAISSE-02</option>
+          {caisses.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={method} onChange={e => setMethod(e.target.value)} style={{ width: 160 }}>
           <option value="">Tous paiements</option>
@@ -118,8 +153,8 @@ export default function Ventes() {
                 Aucune transaction correspondante
               </td></tr>
             ) : filtered.map(sale => {
-              // TODO: Handle payment method when available in API
-              const m = METHOD_CONFIG.especes; // Default for now
+              const methodes = [...new Set(sale.paiements.map(p => p.methode))];
+              const m = methodes.length === 1 ? METHOD_CONFIG[methodes[0]] : null;
               return (
                 <tr key={sale.id}>
                   <td>
@@ -134,14 +169,18 @@ export default function Ventes() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                      {sale.devise === 'XOF' ? `${fmt(sale.total)}` : `€${sale.total.toFixed(2)}`}
+                      {sale.devise === 'XOF' ? fmt(Number(sale.total)) : Number(sale.total).toFixed(2)}
                     </span>
                     <span style={{ fontSize: 9, color: 'var(--text-3)', marginLeft: 4, fontFamily: 'Space Grotesk, sans-serif' }}>{sale.devise}</span>
                   </td>
                   <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 20, fontSize: 11, background: m.bg, color: m.color, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600 }}>
-                      {m.icon}{m.label}
-                    </span>
+                    {m ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 20, fontSize: 11, background: m.bg, color: m.color, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600 }}>
+                        {m.icon}{m.label}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>{methodesVente(sale)}</span>
+                    )}
                   </td>
                   <td style={{ fontSize: 11, color: sale.passager_nom ? 'var(--c-info)' : 'var(--text-3)', fontFamily: sale.passager_nom ? 'Space Grotesk, sans-serif' : undefined }}>
                     {sale.passager_nom || '—'}
@@ -163,24 +202,24 @@ export default function Ventes() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedTicket(null)}>
           <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, boxShadow: '0 24px 60px rgba(0,0,0,0.15)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '28px 24px', borderBottom: '1px dashed var(--border-3)', textAlign: 'center', background: '#FAFAFA' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' }}>DJBC Duty Free</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' }}>{boutique}</div>
               <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', fontFamily: 'IBM Plex Mono, monospace', margin: '4px 0' }}>Ticket #{selectedTicket.numero_ticket}</div>
               <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{new Date(selectedTicket.date_locale).toLocaleString('fr-FR')}</div>
               <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 8, fontWeight: 500 }}>Caisse: <span style={{ fontFamily: 'IBM Plex Mono, monospace' }}>{selectedTicket.numero_caisse}</span></div>
-              {selectedTicket.passager_nom && <div style={{ fontSize: 12, color: '#fff', background: 'var(--c-info)', display: 'inline-block', padding: '2px 8px', borderRadius: 12, marginTop: 8, fontWeight: 600 }}>Vol: {selectedTicket.passager_nom}</div>}
+              {selectedTicket.passager_nom && <div style={{ fontSize: 12, color: '#fff', background: 'var(--c-info)', display: 'inline-block', padding: '2px 8px', borderRadius: 12, marginTop: 8, fontWeight: 600 }}>{selectedTicket.passager_nom}{selectedTicket.vol_reference ? ` · Vol ${selectedTicket.vol_reference}` : ''}</div>}
             </div>
 
             <div style={{ padding: '20px 24px', maxHeight: '50vh', overflowY: 'auto' }}>
               {!selectedTicket.lignes || selectedTicket.lignes.length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: 20 }}>Détail indisponible</div>
-              ) : selectedTicket.lignes.map((l: any, i: number) => (
+              ) : selectedTicket.lignes.map((l, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 13 }}>
                   <div style={{ flex: 1, paddingRight: 16 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>{l.produit__nom || l.produit_nom || `Détail Produit ID: ${l.produit}`}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>{l.produit_nom || `Produit n° ${l.produit}`}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{l.quantite} x {fmt(l.prix_unitaire || 0)} {selectedTicket.devise}</div>
                   </div>
                   <div style={{ fontWeight: 700, color: 'var(--text)', fontFamily: 'IBM Plex Mono, monospace' }}>
-                    {fmt(l.quantite * (l.prix_unitaire || 0))}
+                    {fmt(Number(l.total))}
                   </div>
                 </div>
               ))}
@@ -190,8 +229,11 @@ export default function Ventes() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-2)' }}>TOTAL TTC</span>
                 <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--accent)', fontFamily: 'IBM Plex Mono, monospace' }}>
-                  {fmt(selectedTicket.total)} <span style={{ fontSize: 16 }}>{selectedTicket.devise}</span>
+                  {fmt(Number(selectedTicket.total))} <span style={{ fontSize: 16 }}>{selectedTicket.devise}</span>
                 </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: -12, marginBottom: 16 }}>
+                Paiement : {methodesVente(selectedTicket)}
               </div>
               <button 
                 onClick={() => setSelectedTicket(null)}

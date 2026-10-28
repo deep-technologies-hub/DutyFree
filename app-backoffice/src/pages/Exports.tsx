@@ -1,286 +1,243 @@
 import { useState } from 'react';
 import { useBackofficeStore } from '../store/backofficeStore';
 import { FileSpreadsheet, FileText, Download, RefreshCw, CheckCircle, Calendar } from 'lucide-react';
-import ExcelJS from 'exceljs';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { stockApi, ventesApi, type ApiError, type VenteListItem } from '../api';
+import {
+  downloadExcel, downloadPdf, venteXof, methodesVente, fmtDateHeure, fmtNombre, METHODES, type Cell,
+} from '../utils/exports';
 
-const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 const today = () => new Date().toISOString().slice(0, 10);
 const firstOfMonth = () => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); };
+const frDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR');
+const STATUTS_STOCK: Record<string, string> = { ok: 'OK', bas: 'Bas', critique: 'Critique', rupture: 'Rupture' };
+const STATUTS_SOMMIER: Record<string, string> = { actif: 'Actif', en_cours: "En cours d'apurement", apure: 'Apuré' };
 
-type ExportDef = { id: string; title: string; desc: string; format: 'Excel' | 'PDF'; section: string };
+type ExportDef = { id: string; title: string; desc: string; format: 'Excel' | 'PDF'; section: string; periode: boolean };
 
 const EXPORTS: ExportDef[] = [
-  { id: 'ventes_journalier', title: 'Rapport journalier des ventes', desc: 'CA, tickets, ticket moyen par heure et par vendeur', format: 'Excel', section: 'Ventes' },
-  { id: 'ventes_mensuel', title: 'Rapport mensuel complet', desc: 'Toutes les métriques de la période sélectionnée', format: 'Excel', section: 'Ventes' },
-  { id: 'journal_paiements', title: 'Journal des paiements', desc: 'Tous les encaissements détaillés par mode et devise', format: 'Excel', section: 'Ventes' },
-  { id: 'mix_produits', title: 'Mix des ventes par produit', desc: 'Top ventes, quantités, CA par article sur la période', format: 'Excel', section: 'Ventes' },
-  { id: 'rapport_stock', title: 'Rapport de stock', desc: 'Mouvements, ruptures, valorisation du stock actuel', format: 'Excel', section: 'Stock' },
-  { id: 'sommiers_djbc', title: 'Rapport DJBC — Sommiers', desc: 'État des sommiers douaniers pour transmission à la DJBC', format: 'PDF', section: 'Douane' },
-  { id: 'taux_capture', title: 'Taux de capture passagers', desc: 'Ratio tickets / passagers (données aéroport)', format: 'PDF', section: 'Reporting' },
-  { id: 'tickets_duplicata', title: 'Duplicata de tickets', desc: 'Réédition des tickets sur une période ou numéro de ticket', format: 'PDF', section: 'Caisse' },
+  { id: 'journal_ventes', title: 'Journal des ventes', desc: 'Chaque ticket : date, caisse, vendeur, articles, montant, paiement, passager', format: 'Excel', section: 'Ventes', periode: true },
+  { id: 'synthese_ventes', title: 'Synthèse des ventes', desc: 'CA et tickets par jour, par heure, par caisse / vendeur et par moyen de paiement', format: 'Excel', section: 'Ventes', periode: true },
+  { id: 'journal_paiements', title: 'Journal des paiements', desc: 'Tous les encaissements détaillés par mode et devise, monnaie rendue', format: 'Excel', section: 'Ventes', periode: true },
+  { id: 'mix_produits', title: 'Mix des ventes par produit', desc: 'Quantités, CA et part du CA par article sur la période', format: 'Excel', section: 'Ventes', periode: true },
+  { id: 'rapport_stock', title: 'Rapport de stock', desc: 'État actuel du stock, seuils, ruptures et valorisation au prix de vente', format: 'Excel', section: 'Stock', periode: false },
+  { id: 'sommiers_djbc', title: 'État des sommiers douaniers', desc: 'Sommiers ouverts sur la période, pour transmission à la douane', format: 'PDF', section: 'Douane', periode: true },
+  { id: 'taux_capture', title: 'Taux de capture passagers', desc: 'Ratio tickets / passagers par mois (données aéroport saisies)', format: 'PDF', section: 'Reporting', periode: false },
+  { id: 'tickets_duplicata', title: 'Duplicata de tickets', desc: 'Liste des tickets de la période (filtrable par numéro de ticket)', format: 'PDF', section: 'Caisse', periode: true },
 ];
 
-// ── Helper : téléchargement blob ──────────────────────────────────────
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+/** Agrège des lignes par clé en sommant CA et nombre de tickets. */
+function grouper(ventes: VenteListItem[], cle: (v: VenteListItem) => string) {
+  const map = new Map<string, { ca: number; tickets: number }>();
+  for (const v of ventes) {
+    const k = cle(v);
+    const cur = map.get(k) ?? { ca: 0, tickets: 0 };
+    cur.ca += venteXof(v);
+    cur.tickets += 1;
+    map.set(k, cur);
+  }
+  return [...map.entries()];
 }
 
-// ── Style helper pour ExcelJS ─────────────────────────────────────────
-function headerStyle(): Partial<ExcelJS.Style> {
-  return {
-    font: { bold: true, color: { argb: 'FF0A0E1A' }, size: 11 },
-    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5C842' } },
-    alignment: { horizontal: 'center', vertical: 'middle' },
-    border: {
-      bottom: { style: 'thin', color: { argb: 'FFD4A800' } },
-    },
-  };
-}
-
-function addHeader(ws: ExcelJS.Worksheet, title: string, from: string, to: string, colCount: number) {
-  ws.mergeCells(1, 1, 1, colCount);
-  const titleCell = ws.getCell('A1');
-  titleCell.value = 'DUTY FREE — AÉROPORT DE OUAGADOUGOU (DJBC)';
-  titleCell.font = { bold: true, size: 13, color: { argb: 'FF0A0E1A' } };
-  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5C842' } };
-  titleCell.alignment = { horizontal: 'center' };
-
-  ws.mergeCells(2, 1, 2, colCount);
-  const subCell = ws.getCell('A2');
-  subCell.value = `${title} | Période : ${from} → ${to} | Généré le ${new Date().toLocaleString('fr-FR')}`;
-  subCell.font = { size: 9, color: { argb: 'FF556680' }, italic: true };
-  subCell.alignment = { horizontal: 'center' };
-
-  ws.getRow(3).height = 6; // espace
-}
-
-// ── Exports Excel avec ExcelJS ────────────────────────────────────────
-async function exportExcel(exp: ExportDef, from: string, to: string, sales: unknown[]) {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'DJBC Duty Free';
-  wb.created = new Date();
-
-  if (exp.id === 'ventes_journalier' || exp.id === 'ventes_mensuel') {
-    const ws = wb.addWorksheet('Ventes');
-    addHeader(ws, exp.title, from, to, 8);
-
-    const headers = ['N° Ticket', 'Date', 'Caisse', 'Vendeur', 'Articles', 'Devise', 'Montant TTC', 'Mode paiement'];
-    const headerRow = ws.addRow(headers);
-    headerRow.eachCell(cell => Object.assign(cell, headerStyle()));
-    ws.getRow(4).height = 18;
-
-    const rows = Array.isArray(sales) && sales.length > 0
-      ? (sales as Record<string, unknown>[]).map(s => [
-          s.numero_ticket || s.id,
-          s.date_creation ? new Date(s.date_creation as string).toLocaleString('fr-FR') : '',
-          s.numero_caisse || '',
-          s.caissier_nom || '',
-          s.nombre_articles || '',
-          s.devise || 'XOF',
-          s.montant_total || 0,
-          s.mode_paiement || '',
-        ])
-      : [
-          ['TKT-2025-001', '15/06/2025 08:32', 'CAISSE-01', 'Aminata Sawadogo', 3, 'XOF', 52000, 'Carte'],
-          ['TKT-2025-002', '15/06/2025 09:14', 'CAISSE-02', 'Issouf Compaoré', 1, 'EUR', 87, 'Espèces'],
-          ['TKT-2025-003', '15/06/2025 10:05', 'CAISSE-01', 'Aminata Sawadogo', 2, 'XOF', 37000, 'Mobile Money'],
-        ];
-
-    rows.forEach(r => {
-      const row = ws.addRow(r);
-      row.eachCell(cell => {
-        cell.font = { size: 10 };
-        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE8ECF4' } } };
-      });
-      // Colonne montant en gras
-      row.getCell(7).font = { bold: true, size: 10, family: 3 };
-    });
-
-    ws.columns = [
-      { width: 18 }, { width: 22 }, { width: 12 }, { width: 20 },
-      { width: 10 }, { width: 8 }, { width: 16 }, { width: 18 },
-    ];
-  }
-
-  else if (exp.id === 'journal_paiements') {
-    const ws = wb.addWorksheet('Paiements');
-    addHeader(ws, exp.title, from, to, 4);
-
-    const headers = ['Mode de paiement', 'Transactions', 'Montant XOF', 'Part (%)'];
-    const headerRow = ws.addRow(headers);
-    headerRow.eachCell(cell => Object.assign(cell, headerStyle()));
-    ws.getRow(4).height = 18;
-
-    const data = [
-      ['Espèces XOF', 142, 12450000],
-      ['Carte bancaire', 89, 18300000],
-      ['Mobile Money', 34, 4200000],
-      ['Espèces EUR', 28, 3150000],
-      ['Espèces USD', 15, 1800000],
-    ];
-    const total = data.reduce((s, r) => s + (r[2] as number), 0);
-    data.forEach(r => {
-      const pct = ((r[2] as number) / total * 100).toFixed(1) + '%';
-      ws.addRow([r[0], r[1], r[2], pct]);
-    });
-    // Total
-    const totRow = ws.addRow(['TOTAL', data.reduce((s, r) => s + (r[1] as number), 0), total, '100%']);
-    totRow.eachCell(cell => { cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0EDE6' } }; });
-
-    ws.columns = [{ width: 22 }, { width: 14 }, { width: 18 }, { width: 10 }];
-  }
-
-  else if (exp.id === 'mix_produits') {
-    const ws = wb.addWorksheet('Mix Produits');
-    addHeader(ws, exp.title, from, to, 5);
-
-    ws.addRow(['Produit', 'Code', 'Qté vendue', 'CA XOF', 'Part CA (%)']).eachCell(c => Object.assign(c, headerStyle()));
-    ws.getRow(4).height = 18;
-
-    [
-      ['Hennessy VS 70cl', 'ALC-001', 48, 888000, '12.3%'],
-      ['Dior Sauvage EDP 100ml', 'PAR-001', 23, 1196000, '16.5%'],
-      ['Marlboro Red x20', 'TAB-001', 180, 504000, '7.0%'],
-      ['Baileys Original 70cl', 'ALC-002', 34, 544000, '7.5%'],
-      ['Chanel N°5 EDP 100ml', 'PAR-002', 18, 1170000, '16.2%'],
-    ].forEach(r => ws.addRow(r));
-
-    ws.columns = [{ width: 28 }, { width: 12 }, { width: 14 }, { width: 16 }, { width: 12 }];
-  }
-
-  else if (exp.id === 'rapport_stock') {
-    const ws = wb.addWorksheet('Stock');
-    addHeader(ws, exp.title, from, to, 7);
-
-    ws.addRow(['Produit', 'Code', 'Stock actuel', 'Stock min', 'Stock max', 'Statut', 'Valorisation XOF']).eachCell(c => Object.assign(c, headerStyle()));
-    ws.getRow(4).height = 18;
-
-    const stockData = [
-      ['Hennessy VS 70cl', 'ALC-001', 48, 10, 200, 'OK', 888000],
-      ['Baileys Original 70cl', 'ALC-002', 12, 10, 100, 'FAIBLE', 192000],
-      ['Cointreau Triple Sec 70cl', 'ALC-004', 0, 5, 50, 'RUPTURE', 0],
-      ['Dior Sauvage EDP 100ml', 'PAR-001', 7, 5, 30, 'OK', 364000],
-      ['Marlboro Red x20', 'TAB-001', 180, 50, 500, 'OK', 504000],
-    ];
-
-    stockData.forEach(r => {
-      const row = ws.addRow(r);
-      const statut = r[5] as string;
-      const statutCell = row.getCell(6);
-      if (statut === 'RUPTURE') { statutCell.font = { bold: true, color: { argb: 'FFF87171' } }; }
-      else if (statut === 'FAIBLE') { statutCell.font = { bold: true, color: { argb: 'FFFB923C' } }; }
-      else { statutCell.font = { bold: true, color: { argb: 'FF22C55E' } }; }
-    });
-
-    ws.columns = [{ width: 28 }, { width: 12 }, { width: 14 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 18 }];
-  }
-
-  // Téléchargement
-  const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  downloadBlob(blob, `${exp.id}_${from}_${to}.xlsx`);
-}
-
-// ── Exports PDF (inchangé) ────────────────────────────────────────────
-async function exportPdf(exp: ExportDef, from: string, to: string) {
-  const doc = new jsPDF();
-  const pageW = doc.internal.pageSize.getWidth();
-
-  doc.setFontSize(9); doc.setTextColor(120, 120, 120);
-  doc.text('DUTY FREE — AÉROPORT DE OUAGADOUGOU (DJBC)', pageW / 2, 14, { align: 'center' });
-  doc.setFontSize(16); doc.setTextColor(30, 30, 30); doc.setFont('helvetica', 'bold');
-  doc.text(exp.title, pageW / 2, 26, { align: 'center' });
-  doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(120, 120, 120);
-  doc.text(`Période : ${from} → ${to}  |  Généré le ${new Date().toLocaleString('fr-FR')}`, pageW / 2, 33, { align: 'center' });
-  doc.setDrawColor(220, 200, 100); doc.setLineWidth(0.5); doc.line(14, 37, pageW - 14, 37);
-
-  if (exp.id === 'sommiers_djbc') {
-    autoTable(doc, {
-      startY: 44,
-      head: [['N° Sommier', 'Réf. DJBC', 'Produit', 'Qté Init.', 'Qté Sortie', 'Restant', 'Statut']],
-      body: [
-        ['SOM-2024-001', 'REF-DJBC-2024-001', 'Alcools LVMH', '200', '145', '55', 'Actif'],
-        ['SOM-2024-002', 'REF-DJBC-2024-002', 'Alcools Rémy Cointreau', '120', '118', '2', 'En cours'],
-        ['SOM-2024-003', 'REF-DJBC-2024-003', 'Tabacs Philip Morris', '1000', '295', '705', 'Actif'],
-        ['SOM-2024-004', 'REF-DJBC-2024-004', 'Alcools Diageo', '150', '126', '24', 'Actif'],
-        ['SOM-2023-012', 'REF-DJBC-2023-012', 'Parfums LVMH', '80', '80', '0', 'Apuré'],
-      ],
-      styles: { fontSize: 9, cellPadding: 3 },
-      headStyles: { fillColor: [245, 200, 66], textColor: [0, 0, 0], fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [22, 30, 46] },
-    });
-    const finalY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 16;
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-    doc.text('Visa Direction :', 14, finalY);
-    doc.line(14, finalY + 18, 90, finalY + 18);
-    doc.text('Visa DJBC :', pageW / 2, finalY);
-    doc.line(pageW / 2, finalY + 18, pageW - 14, finalY + 18);
-  }
-
-  if (exp.id === 'taux_capture') {
-    autoTable(doc, {
-      startY: 44,
-      head: [['Mois', 'Passagers', 'Tickets', 'Taux de capture', 'CA XOF']],
-      body: [
-        ['Janvier 2025', '18 400', '1 230', '6.7%', '45 200 000'],
-        ['Février 2025', '16 200', '1 080', '6.7%', '38 900 000'],
-        ['Mars 2025', '19 800', '1 420', '7.2%', '52 100 000'],
-        ['Avril 2025', '21 100', '1 560', '7.4%', '58 700 000'],
-        ['Mai 2025', '20 600', '1 490', '7.2%', '56 200 000'],
-        ['Juin 2025', '22 300', '1 680', '7.5%', '63 500 000'],
-      ],
-      styles: { fontSize: 9, cellPadding: 3 },
-      headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold' },
-    });
-  }
-
-  if (exp.id === 'tickets_duplicata') {
-    autoTable(doc, {
-      startY: 44,
-      head: [['N° Ticket', 'Date', 'Caisse', 'Vendeur', 'Montant XOF', 'Mode paiement']],
-      body: [
-        ['TKT-2025-1421', '15/06/2025 09:32', 'CAISSE-01', 'Aminata Sawadogo', '52 000', 'Carte'],
-        ['TKT-2025-1422', '15/06/2025 10:14', 'CAISSE-02', 'Issouf Compaoré', '18 500', 'Espèces'],
-        ['TKT-2025-1423', '15/06/2025 11:05', 'CAISSE-01', 'Aminata Sawadogo', '87 500', 'Carte + Espèces'],
-      ],
-      styles: { fontSize: 9, cellPadding: 3 },
-      headStyles: { fillColor: [55, 65, 81], textColor: [255, 255, 255], fontStyle: 'bold' },
-    });
-  }
-
-  doc.save(`${exp.id}_${from}_${to}.pdf`);
-}
-
-// ── Composant page ────────────────────────────────────────────────────
 export function ExportsPage() {
-  const { ventes: sales, dashboardData } = useBackofficeStore();
+  const { user } = useBackofficeStore();
+  const boutique = user?.organisation?.nom || 'Duty Free';
   const [dateFrom, setDateFrom] = useState(firstOfMonth());
   const [dateTo, setDateTo] = useState(today());
+  const [ticket, setTicket] = useState('');
   const [loading, setLoading] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
   const flash = (id: string) => { setDone(id); setTimeout(() => setDone(null), 3000); };
+  const periode = `${frDate(dateFrom)} → ${frDate(dateTo)}`;
+  const suffixe = `${dateFrom}_${dateTo}`;
+
+  const ventesPeriode = () => ventesApi.listAll({ date_debut: dateFrom, date_fin: dateTo, statut: 'payee' });
+
+  const generer = async (exp: ExportDef) => {
+    const base = { boutique, title: exp.title, periode: exp.periode ? periode : undefined };
+
+    if (exp.id === 'journal_ventes') {
+      const ventes = await ventesPeriode();
+      const rows: Cell[][] = ventes.map(v => [
+        v.numero_ticket, fmtDateHeure(v.date_locale), v.numero_caisse, v.caissier_nom, v.nb_articles,
+        Number(v.total), v.devise, Math.round(venteXof(v)), methodesVente(v),
+        v.passager_nom, v.vol_reference, v.destination,
+      ]);
+      const total = ventes.reduce((s, v) => s + venteXof(v), 0);
+      await downloadExcel({ ...base, filename: `journal_ventes_${suffixe}.xlsx`, sheets: [{
+        name: 'Ventes',
+        headers: ['N° ticket', 'Date', 'Caisse', 'Vendeur', 'Articles', 'Montant', 'Devise', 'Montant XOF', 'Paiement', 'Passager', 'Vol', 'Destination'],
+        widths: [20, 18, 12, 22, 9, 12, 8, 14, 20, 22, 10, 16],
+        rows,
+        total: ['TOTAL', `${ventes.length} tickets`, '', '', ventes.reduce((s, v) => s + v.nb_articles, 0), '', '', Math.round(total)],
+      }] });
+    }
+
+    else if (exp.id === 'synthese_ventes') {
+      const ventes = await ventesPeriode();
+      const ligne = ([k, x]: [string, { ca: number; tickets: number }]): Cell[] =>
+        [k, x.tickets, Math.round(x.ca), Math.round(x.tickets ? x.ca / x.tickets : 0)];
+      const headers = (premier: string) => [premier, 'Tickets', 'CA XOF', 'Ticket moyen XOF'];
+      const totalCa = ventes.reduce((s, v) => s + venteXof(v), 0);
+      const total: Cell[] = ['TOTAL', ventes.length, Math.round(totalCa), Math.round(ventes.length ? totalCa / ventes.length : 0)];
+
+      const parJour = grouper(ventes, v => v.date_locale.slice(0, 10)).sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, x]) => ligne([frDate(k), x]));
+      const parHeure = grouper(ventes, v => `${String(new Date(v.date_locale).getHours()).padStart(2, '0')}h`)
+        .sort(([a], [b]) => a.localeCompare(b)).map(ligne);
+      const parVendeur = grouper(ventes, v => `${v.numero_caisse || '—'} · ${v.caissier_nom || '—'}`)
+        .sort(([, a], [, b]) => b.ca - a.ca).map(ligne);
+
+      const paiements = new Map<string, { n: number; montant: number }>();
+      for (const v of ventes) for (const p of v.paiements) {
+        const k = METHODES[p.methode] ?? p.methode;
+        const cur = paiements.get(k) ?? { n: 0, montant: 0 };
+        cur.n += 1;
+        cur.montant += Number(p.montant_xof) - Number(p.monnaie_rendue || 0);
+        paiements.set(k, cur);
+      }
+      const totalPaiements = [...paiements.values()].reduce((s, p) => s + p.montant, 0);
+
+      await downloadExcel({ ...base, filename: `synthese_ventes_${suffixe}.xlsx`, sheets: [
+        { name: 'Par jour', headers: headers('Jour'), rows: parJour, total, widths: [14, 10, 16, 18] },
+        { name: 'Par heure', headers: headers('Heure'), rows: parHeure, total, widths: [10, 10, 16, 18] },
+        { name: 'Par caisse et vendeur', headers: headers('Caisse · vendeur'), rows: parVendeur, total, widths: [32, 10, 16, 18] },
+        {
+          name: 'Par moyen de paiement',
+          headers: ['Moyen de paiement', 'Paiements', 'Encaissé XOF', 'Part (%)'],
+          rows: [...paiements.entries()].sort(([, a], [, b]) => b.montant - a.montant).map(([k, p]) => [
+            k, p.n, Math.round(p.montant), totalPaiements ? `${(p.montant / totalPaiements * 100).toFixed(1)} %` : '—',
+          ]),
+          total: ['TOTAL', [...paiements.values()].reduce((s, p) => s + p.n, 0), Math.round(totalPaiements), '100 %'],
+          widths: [22, 12, 16, 10],
+        },
+      ] });
+    }
+
+    else if (exp.id === 'journal_paiements') {
+      const ventes = await ventesPeriode();
+      const rows: Cell[][] = ventes.flatMap(v => v.paiements.map(p => [
+        v.numero_ticket, fmtDateHeure(v.date_locale), v.numero_caisse, METHODES[p.methode] ?? p.methode,
+        Number(p.montant), p.devise, Number(p.taux_change), Math.round(Number(p.montant_xof)),
+        Math.round(Number(p.monnaie_rendue || 0)), Math.round(Number(p.montant_xof) - Number(p.monnaie_rendue || 0)),
+      ]));
+      const net = rows.reduce((s, r) => s + Number(r[9]), 0);
+      await downloadExcel({ ...base, filename: `journal_paiements_${suffixe}.xlsx`, sheets: [{
+        name: 'Paiements',
+        headers: ['N° ticket', 'Date', 'Caisse', 'Mode', 'Montant', 'Devise', 'Taux', 'Reçu XOF', 'Rendu XOF', 'Encaissé XOF'],
+        widths: [20, 18, 12, 16, 12, 8, 10, 14, 12, 14],
+        rows,
+        total: ['TOTAL', `${rows.length} paiements`, '', '', '', '', '', '', '', Math.round(net)],
+      }] });
+    }
+
+    else if (exp.id === 'mix_produits') {
+      const ventes = await ventesPeriode();
+      // Le CA de chaque ligne est converti en XOF au prorata du ticket (gère les ventes en devises)
+      const produits = new Map<string, { qte: number; ca: number; tickets: Set<string> }>();
+      for (const v of ventes) {
+        const totalLignes = v.lignes.reduce((s, l) => s + Number(l.total), 0);
+        const ratio = totalLignes ? venteXof(v) / totalLignes : 0;
+        for (const l of v.lignes) {
+          const cur = produits.get(l.produit_nom) ?? { qte: 0, ca: 0, tickets: new Set<string>() };
+          cur.qte += Number(l.quantite);
+          cur.ca += Number(l.total) * ratio;
+          cur.tickets.add(v.numero_ticket);
+          produits.set(l.produit_nom, cur);
+        }
+      }
+      const totalCa = [...produits.values()].reduce((s, p) => s + p.ca, 0);
+      const rows: Cell[][] = [...produits.entries()].sort(([, a], [, b]) => b.ca - a.ca).map(([nom, p], i) => [
+        i + 1, nom, p.qte, p.tickets.size, Math.round(p.ca), totalCa ? `${(p.ca / totalCa * 100).toFixed(1)} %` : '—',
+      ]);
+      await downloadExcel({ ...base, filename: `mix_produits_${suffixe}.xlsx`, sheets: [{
+        name: 'Mix produits',
+        headers: ['Rang', 'Produit', 'Qté vendue', 'Tickets', 'CA XOF', 'Part du CA'],
+        widths: [7, 36, 12, 10, 16, 12],
+        rows,
+        total: ['', 'TOTAL', rows.reduce((s, r) => s + Number(r[2]), 0), ventes.length, Math.round(totalCa), '100 %'],
+      }] });
+    }
+
+    else if (exp.id === 'rapport_stock') {
+      const produits = await stockApi.produits.listAll();
+      const valeur = (p: { stock: number; prix_xof: number }) => Number(p.stock) * Number(p.prix_xof);
+      const rows: Cell[][] = produits.map(p => [
+        p.code, p.nom, p.categorie_nom || '—', p.stock, p.stock_min, p.stock_max, p.unite,
+        STATUTS_STOCK[p.statut_stock] ?? p.statut_stock, Number(p.prix_xof), Math.round(valeur(p)),
+      ]);
+      const ruptures = produits.filter(p => p.statut_stock !== 'ok');
+      await downloadExcel({ ...base, filename: `rapport_stock_${today()}.xlsx`, sheets: [
+        {
+          name: 'Stock',
+          headers: ['Code', 'Produit', 'Catégorie', 'Stock', 'Min', 'Max', 'Unité', 'Statut', 'Prix XOF', 'Valeur XOF'],
+          widths: [12, 34, 16, 9, 8, 8, 11, 11, 12, 16],
+          rows,
+          total: ['', 'TOTAL', '', produits.reduce((s, p) => s + Number(p.stock), 0), '', '', '', '', '', Math.round(produits.reduce((s, p) => s + valeur(p), 0))],
+        },
+        {
+          name: 'À réapprovisionner',
+          headers: ['Code', 'Produit', 'Stock', 'Min', 'Max', 'Statut', 'Qté à commander'],
+          widths: [12, 34, 9, 8, 8, 11, 16],
+          rows: ruptures.map(p => [p.code, p.nom, p.stock, p.stock_min, p.stock_max, STATUTS_STOCK[p.statut_stock], Math.max(0, p.stock_max - p.stock)]),
+        },
+      ] });
+    }
+
+    else if (exp.id === 'sommiers_djbc') {
+      const sommiers = (await stockApi.sommiers.listAll())
+        .filter(s => s.date_ouverture <= dateTo && (s.statut !== 'apure' || !s.date_apurement || s.date_apurement >= dateFrom));
+      downloadPdf({ ...base, filename: `sommiers_${suffixe}.pdf`, landscape: true,
+        headers: ['N° sommier', 'Réf. douane', 'Produit', 'Ouverture', 'Qté init.', 'Entrées', 'Sorties', 'Restant', 'Apurement', 'Statut'],
+        rows: sommiers.map(s => [
+          s.numero, s.reference_djbc || '—', s.produit_nom, frDate(s.date_ouverture), fmtNombre(s.quantite_initiale),
+          fmtNombre(s.quantite_entree), fmtNombre(s.quantite_sortie), fmtNombre(s.quantite_restante),
+          `${s.taux_apurement} %`, STATUTS_SOMMIER[s.statut] ?? s.statut,
+        ]),
+        visas: ['Visa de la direction', 'Visa des douanes'],
+      });
+    }
+
+    else if (exp.id === 'taux_capture') {
+      const data = [...await ventesApi.tauxCapture()].reverse();
+      downloadPdf({ ...base, filename: `taux_capture_${today()}.pdf`,
+        headers: ['Mois', 'Passagers', 'Tickets', 'Taux de capture', 'Source'],
+        rows: data.map(t => [
+          new Date(t.annee, t.mois - 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }),
+          fmtNombre(t.passagers), fmtNombre(t.tickets), `${t.taux} %`, t.source || '—',
+        ]),
+      });
+    }
+
+    else if (exp.id === 'tickets_duplicata') {
+      let ventes = await ventesPeriode();
+      const q = ticket.trim().toLowerCase();
+      if (q) ventes = ventes.filter(v => v.numero_ticket.toLowerCase().includes(q));
+      const total = ventes.reduce((s, v) => s + venteXof(v), 0);
+      downloadPdf({ ...base, filename: `tickets_${suffixe}.pdf`, landscape: true,
+        headers: ['N° ticket', 'Date', 'Caisse', 'Vendeur', 'Articles', 'Détail', 'Montant XOF', 'Paiement'],
+        rows: ventes.map(v => [
+          v.numero_ticket, fmtDateHeure(v.date_locale), v.numero_caisse, v.caissier_nom, v.nb_articles,
+          v.lignes.map(l => `${l.quantite} × ${l.produit_nom}`).join(', '),
+          fmtNombre(venteXof(v)), methodesVente(v),
+        ]),
+        total: ['TOTAL', `${ventes.length} tickets`, '', '', '', '', fmtNombre(total), ''],
+      });
+    }
+  };
 
   const handleExport = async (exp: ExportDef) => {
+    if (exp.periode && dateFrom > dateTo) {
+      alert('La date de début doit précéder la date de fin.');
+      return;
+    }
     setLoading(exp.id);
     try {
-      await new Promise(r => setTimeout(r, 300));
-      if (exp.format === 'Excel') {
-        await exportExcel(exp, dateFrom, dateTo, sales);
-      } else {
-        await exportPdf(exp, dateFrom, dateTo);
-      }
+      await generer(exp);
       flash(exp.id);
     } catch (e) {
       console.error(e);
-      alert('Erreur lors de la génération.');
+      alert(`Erreur lors de la génération : ${(e as ApiError).message ?? 'réessayez'}`);
     } finally {
       setLoading(null);
     }
@@ -291,27 +248,28 @@ export function ExportsPage() {
   return (
     <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Extraction de données</div>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.01em' }}>Exports & Rapports</h1>
+        <div className="page-eyebrow">Extraction de données</div>
+        <h1 className="page-title">Exports & Rapports</h1>
         <hr className="rule" style={{ marginTop: 16 }} />
       </div>
 
       {/* Période */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 36, alignItems: 'center', background: 'var(--surface)', padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 36, alignItems: 'center', background: 'var(--surface)', padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 10 }}>
         <Calendar size={14} color="var(--gold)" />
         <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Période</span>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ width: 160, fontSize: 13 }} />
+        <input type="date" value={dateFrom} max={dateTo} onChange={e => setDateFrom(e.target.value)} style={{ width: 160, fontSize: 13 }} />
         <span style={{ color: 'var(--text-3)', fontSize: 13 }}>→</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ width: 160, fontSize: 13 }} />
+        <input type="date" value={dateTo} min={dateFrom} onChange={e => setDateTo(e.target.value)} style={{ width: 160, fontSize: 13 }} />
+        <input value={ticket} onChange={e => setTicket(e.target.value)} placeholder="N° de ticket (duplicata)" style={{ width: 200, fontSize: 13 }} />
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>
-          La période s'applique à tous les exports Excel
+          Le stock et le taux de capture sont exportés à date du jour
         </div>
       </div>
 
       {sections.map(section => (
         <div key={section} style={{ marginBottom: 32 }}>
           <div className="section-label" style={{ marginBottom: 12 }}>{section}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 10 }}>
             {EXPORTS.filter(e => e.section === section).map(exp => (
               <div key={exp.id} className="card" style={{ padding: '20px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                 <div style={{ padding: 10, background: exp.format === 'PDF' ? 'var(--amber-dim)' : 'var(--green-dim)', borderRadius: 8, color: exp.format === 'PDF' ? 'var(--amber)' : 'var(--green)', flexShrink: 0 }}>
@@ -322,7 +280,7 @@ export function ExportsPage() {
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>{exp.desc}</div>
                   <button onClick={() => handleExport(exp)} disabled={!!loading}
                     className="btn btn-primary btn-sm"
-                    style={{ gap: 6, background: done === exp.id ? 'var(--green-dim)' : undefined, color: done === exp.id ? 'var(--green)' : undefined, border: done === exp.id ? '1px solid rgba(34,197,94,0.3)' : undefined }}>
+                    style={{ gap: 6, background: done === exp.id ? 'var(--green-dim)' : undefined, color: done === exp.id ? 'var(--green)' : undefined, border: done === exp.id ? '1px solid var(--c-up-bd)' : undefined }}>
                     {loading === exp.id
                       ? <><RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> Génération…</>
                       : done === exp.id

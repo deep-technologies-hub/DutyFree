@@ -88,7 +88,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
 
         {/* Succès */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--c-up-dim)', border: '2px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--c-up-dim)', border: '2px solid var(--c-up-bd)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
             <Check size={26} color="var(--c-up)" strokeWidth={2.5} />
           </div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>Vente enregistrée</div>
@@ -112,7 +112,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
 
           {/* Passager */}
           {sale.passengerName && (
-            <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--c-info-dim)', borderRadius: 7, border: '1px solid rgba(96,165,250,0.2)', fontSize: 12 }}>
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--c-info-dim)', borderRadius: 7, border: '1px solid var(--c-info-bd)', fontSize: 12 }}>
               <div style={{ fontWeight: 700, color: 'var(--c-info)', marginBottom: 2 }}>✈ {sale.passengerName}</div>
               <div style={{ color: 'var(--text-3)', fontFamily: 'IBM Plex Mono, monospace' }}>
                 Vol {sale.flightRef} → {sale.destination}
@@ -188,7 +188,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
               onClick={usbConnected ? handleUsbPrint : handleUsbConnect}
               disabled={usbConnecting}
               className="btn btn-ghost"
-              style={{ flex: 1, justifyContent: 'center', gap: 7, color: usbConnected ? 'var(--c-up)' : 'var(--text-3)', borderColor: usbConnected ? 'rgba(34,197,94,0.3)' : undefined }}
+              style={{ flex: 1, justifyContent: 'center', gap: 7, color: usbConnected ? 'var(--c-up)' : 'var(--text-3)', borderColor: usbConnected ? 'var(--c-up-bd)' : undefined }}
             >
               <Usb size={14} />
               {usbConnecting ? 'Connexion…' : usbConnected ? 'Ticket USB' : 'Relier imprimante'}

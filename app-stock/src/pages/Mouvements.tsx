@@ -51,8 +51,9 @@ export default function Mouvements() {
     <div className="animate-in" style={{ padding: 32 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
         <div>
-          <h1 style={{ fontSize:24, fontWeight:800, color:'#fff', margin:0 }}>Mouvements de stock</h1>
-          <p style={{ fontSize:12, color:'var(--text-3)', margin:'4px 0 0' }}>Historique complet des entrées, sorties et ajustements</p>
+          <div className="page-eyebrow">Traçabilité</div>
+          <h1 className="page-title">Mouvements de stock</h1>
+          <p className="page-sub">Historique complet des entrées, sorties et ajustements</p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => setShowModal(true)} className="btn btn-primary" style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', fontSize:12 }}>
@@ -104,7 +105,7 @@ export default function Mouvements() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="card" style={{ width: '90%', maxWidth: 500, padding: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: 0 }}>Nouveau Mouvement</h3>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Nouveau Mouvement</h3>
               <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer' }}><X size={18} /></button>
             </div>
             

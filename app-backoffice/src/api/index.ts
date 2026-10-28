@@ -161,6 +161,17 @@ export const api = {
   delete: <T>(url: string) => apiFetch<T>(url, { method: 'DELETE' }),
 };
 
+/** Toutes les pages d'une liste paginée (catalogue complet, exports). */
+export async function fetchAllPages<T>(endpoint: string): Promise<T[]> {
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const results: T[] = [];
+  for (let page = 1; ; page++) {
+    const res = await api.get<PaginatedResponse<T>>(`${endpoint}${sep}page_size=1000&page=${page}`);
+    results.push(...res.results);
+    if (!res.next) return results;
+  }
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────
 export const authApi = {
   login: async (username: string, password: string) => {
@@ -226,6 +237,7 @@ export const utilisateursApi = {
 export const stockApi = {
   produits: {
     list: (params = '') => api.get<PaginatedResponse<Produit>>(`/stock/produits/${params}`),
+    listAll: () => fetchAllPages<Produit>('/stock/produits/'),
     get: (id: number) => api.get<Produit>(`/stock/produits/${id}/`),
     byBarcode: (code: string) => api.get<Produit>(`/stock/produits/par_barcode/?code=${code}`),
     alertes: () => api.get<{ ruptures: Produit[]; critiques: Produit[]; bas: Produit[] }>('/stock/produits/alertes/'),
@@ -233,12 +245,19 @@ export const stockApi = {
     create: (data: Partial<Produit>) => api.post<Produit>('/stock/produits/', data),
     update: (id: number, data: Partial<Produit>) => api.patch<Produit>(`/stock/produits/${id}/`, data),
   },
+  categories: {
+    list: () => api.get<Categorie[]>('/stock/categories/avec_stats/'),
+    create: (data: Partial<Categorie>) => api.post<Categorie>('/stock/categories/', data),
+    update: (id: number, data: Partial<Categorie>) => api.patch<Categorie>(`/stock/categories/${id}/`, data),
+    delete: (id: number) => api.delete(`/stock/categories/${id}/`),
+  },
   fournisseurs: {
     list: () => api.get<PaginatedResponse<Fournisseur>>('/stock/fournisseurs/'),
     create: (data: Partial<Fournisseur>) => api.post<Fournisseur>('/stock/fournisseurs/', data),
   },
   sommiers: {
     list: () => api.get<PaginatedResponse<Sommier>>('/stock/sommiers/'),
+    listAll: () => fetchAllPages<Sommier>('/stock/sommiers/'),
     aApurer: () => api.get<Sommier[]>('/stock/sommiers/a_apurer/'),
   },
   mouvements: {
@@ -256,6 +275,12 @@ export const stockApi = {
 export const ventesApi = {
   create: (data: VentePayload) => api.post<VenteResponse>('/ventes/', data),
   list: (params = '') => api.get<PaginatedResponse<VenteListItem>>(`/ventes/${params}`),
+  /** Toutes les ventes d'une période (filtres : date_debut, date_fin, numero_caisse, methode) */
+  listAll: (filtres: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(Object.entries(filtres).filter(([, v]) => v)).toString();
+    return fetchAllPages<VenteListItem>(`/ventes/${qs ? `?${qs}` : ''}`);
+  },
+  caisses: () => api.get<string[]>('/ventes/caisses/'),
   syncOffline: (ventes: VentePayload[]) =>
     api.post<{ synced: number; errors: unknown[] }>('/ventes/sync_offline/', { ventes }),
   dashboard: () => api.get<DashboardData>('/ventes/dashboard/'),
@@ -263,6 +288,8 @@ export const ventesApi = {
   passagers: {
     list: () => api.get<PaginatedResponse<DonneesPassagers>>('/ventes/passagers/'),
     create: (data: Partial<DonneesPassagers>) => api.post<DonneesPassagers>('/ventes/passagers/', data),
+    update: (id: number, data: Partial<DonneesPassagers>) => api.patch<DonneesPassagers>(`/ventes/passagers/${id}/`, data),
+    delete: (id: number) => api.delete(`/ventes/passagers/${id}/`),
   },
 };
 
@@ -280,7 +307,8 @@ export interface Produit {
   code_barres: string;
   nom: string;
   nom_en: string;
-  categorie: string;
+  categorie: number | null;
+  categorie_nom?: string;
   prix_xof: number;
   prix_eur: number;
   prix_usd: number;
@@ -292,6 +320,16 @@ export interface Produit {
   fournisseur: number | null;
   fournisseur_nom?: string;
   photo_url?: string;
+}
+
+export interface Categorie {
+  id: number;
+  nom: string;
+  code: string;
+  description: string;
+  couleur: string;
+  icone: string;
+  nombre_produits: number;
 }
 
 export interface Fournisseur {
@@ -421,6 +459,8 @@ export interface VenteListItem {
   destination: string;
   synced: boolean;
   nb_articles: number;
+  lignes: { produit: number; produit_nom: string; quantite: number; prix_unitaire: number; total: number }[];
+  paiements: { methode: 'especes' | 'carte' | 'mobile_money'; devise: string; montant: number; montant_xof: number; monnaie_rendue: number; taux_change: number }[];
 }
 
 export interface DashboardData {
@@ -432,9 +472,13 @@ export interface DashboardData {
   ca_daily: { jour: string; ca: number; tickets: number }[];
   ca_by_categorie: { lignes__produit__categorie: string; ca: number; tickets: number }[];
   ca_by_cashier: { caissier__first_name: string; caissier__last_name: string; ca: number; tickets: number }[];
+  ca_by_payment: { paiements__methode: string; amount: number }[];
 }
 
 export interface TauxCapture {
+  id: number;
+  source: string;
+  notes: string;
   annee: number;
   mois: number;
   passagers: number;
