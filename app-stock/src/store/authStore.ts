@@ -7,6 +7,7 @@ interface AuthUser {
   full_name: string;
   role: string;
   register_id: string;
+  organisation?: { nom: string; slug: string } | null;
 }
 
 interface AuthStore {

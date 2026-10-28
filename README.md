@@ -279,6 +279,7 @@ docker compose exec db pg_dump -U postgres dutyfree > sauvegarde_$(date +%F).sql
 ## API
 
 Toutes les routes sont préfixées par `/api/`. Authentification : `Authorization: Bearer <access>`.
+Les listes sont paginées par 50 ; `?page_size=` (jusqu'à 1000) sert aux exports et au chargement du catalogue complet.
 
 ### Connexion
 ```bash
@@ -321,7 +322,8 @@ Les caissiers peuvent utiliser leur n° de caisse comme identifiant et leur PIN 
 | POST | `/stock/commandes/{id}/envoyer/` · `/recevoir/` | Envoi email + PDF · réception en stock |
 | GET | `/stock/commandes/{id}/pdf/` | Bon de commande PDF |
 | **Ventes** | | |
-| GET / POST | `/ventes/` | Ventes (création depuis la caisse) |
+| GET / POST | `/ventes/` | Ventes (création depuis la caisse). Filtres : `date_debut`, `date_fin`, `numero_caisse`, `methode`, `statut`, `search` |
+| GET | `/ventes/caisses/` | Numéros de caisse ayant vendu (filtres du backoffice) |
 | POST | `/ventes/sync_offline/` | Synchronisation des ventes hors ligne (idempotente) |
 | GET | `/ventes/dashboard/`, `/ventes/taux_capture/` | Indicateurs |
 | CRUD | `/ventes/passagers/` | Données passagers mensuelles |
@@ -363,13 +365,31 @@ Les caissiers peuvent utiliser leur n° de caisse comme identifiant et leur PIN 
 
 ## Mise en production
 
-1. Serveur (VPS 2 vCPU / 4 Go suffit pour démarrer) avec Docker, un nom de domaine et un proxy TLS (Caddy ou Traefik avec Let's Encrypt) devant les ports 80/81/82.
-2. Dans `.env`, changer toutes les lignes marquées `[PROD]` : `SECRET_KEY`, `POSTGRES_PASSWORD`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `PUBLIC_URL`, `FRONTEND_URL`, `CAISSE_URL`, `STOCK_URL`, `USE_HTTPS=True`, `NUM_PROXIES=2`.
-3. Paiement : `PAYMENT_PROVIDER=cinetpay` et clés du compte marchand. Email : un SMTP transactionnel (Brevo, Mailjet, SES…).
-4. Lancer **sans** la surcharge locale : `docker compose -f docker-compose.yml up -d --build`.
-5. `createsuperuser`, puis vérifier les prix des plans dans `/admin/`.
-6. Si vous personnalisez `ADMIN_URL`, mettez le même chemin dans la `location /admin/` de `nginx-backend.conf`.
-7. Sauvegardes automatiques quotidiennes de PostgreSQL (`pg_dump`) hors du serveur.
+La surcharge `docker-compose.prod.yml` ajoute un proxy **Caddy** (HTTPS automatique Let's Encrypt, un sous-domaine par application) et un service de **sauvegarde quotidienne**. nginx n'est alors plus exposé : Caddy est le seul point d'entrée.
+
+| URL | Application |
+|---|---|
+| `https://app.<DOMAINE>` | Backoffice, inscription, console opérateur (`/admin/`) |
+| `https://caisse.<DOMAINE>` | Caisse |
+| `https://stock.<DOMAINE>` | Stock |
+
+1. Serveur (VPS 2 vCPU / 4 Go suffit pour démarrer) avec Docker, ports 80 et 443 ouverts.
+2. DNS : trois enregistrements `A` — `app`, `caisse`, `stock` — vers l'IP du serveur.
+3. Dans `.env` : `DOMAINE`, `ACME_EMAIL`, puis toutes les lignes marquées `[PROD]` : `SECRET_KEY`, `POSTGRES_PASSWORD`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` (les trois sous-domaines en `https://`), `PUBLIC_URL`, `FRONTEND_URL`, `CAISSE_URL`, `STOCK_URL`. `USE_HTTPS` et `NUM_PROXIES` sont réglés par la surcharge.
+4. Paiement : `PAYMENT_PROVIDER=cinetpay` et clés du compte marchand. Email : un SMTP transactionnel (Brevo, Mailjet, SES…).
+5. Lancer :
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+   ```
+6. Vérifier les prix des plans dans `/admin/`. Si vous personnalisez `ADMIN_URL`, mettez le même chemin dans la `location /admin/` de `nginx-backend.conf`.
+7. **Sauvegardes** : chaque jour, la base (`dutyfree_<date>.dump`) et les photos produits (`media_<date>.tar.gz`) sont écrites dans `./backups`, conservées `BACKUP_RETENTION_DAYS` jours (14 par défaut). Copiez ce dossier hors du serveur (rclone, rsync, stockage objet…). Restauration :
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db \
+     pg_restore -U postgres -d dutyfree --clean --if-exists < backups/dutyfree_<date>.dump
+   ```
+
+> Vous avez déjà un proxy TLS (Traefik, load balancer…) ? Gardez `docker-compose.yml` seul, faites pointer le proxy vers les ports 80/81/82 et mettez `USE_HTTPS=True`, `NUM_PROXIES=2` dans `.env`.
 
 ## Migration d'une installation existante
 
@@ -394,7 +414,7 @@ python manage.py migrate
 cd backend
 python manage.py test
 ```
-42 tests (`tenants/tests.py`, `tenants/tests_paiements.py`) : inscription, connexion par code entreprise et PIN, isolation entre organisations, unicité par organisation, quotas, rôles, cycle d'abonnement, paiement (simulateur et CinetPay simulé : montant falsifié, notification rejouée, fausse notification), renouvellement mensuel, déconnexion, refresh à usage unique, mot de passe oublié, suspension, nombre de requêtes SQL, ventes et synchronisation hors ligne.
+53 tests (`tenants/tests.py`, `tenants/tests_paiements.py`, `ventes/tests.py`) : inscription, connexion par code entreprise et PIN, isolation entre organisations, unicité par organisation, quotas, rôles, cycle d'abonnement, paiement (simulateur et CinetPay simulé : montant falsifié, notification rejouée, fausse notification), renouvellement mensuel, déconnexion, refresh à usage unique, mot de passe oublié, suspension, nombre de requêtes SQL, ventes et synchronisation hors ligne, filtres et exports des ventes, catégories, sommiers, taux de capture.
 
 Frontends : `npm run build` (vérification TypeScript + build) et `npm run lint` dans chaque application.
 

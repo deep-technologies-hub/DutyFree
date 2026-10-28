@@ -1,0 +1,26 @@
+# Proxy HTTPS de production (docker-compose.prod.yml).
+# Certificats Let's Encrypt obtenus et renouvelés automatiquement.
+# Prérequis DNS : app.<DOMAINE>, caisse.<DOMAINE> et stock.<DOMAINE> pointent vers le serveur.
+{
+	email {$ACME_EMAIL}
+}
+
+(commun) {
+	encode zstd gzip
+	header -Server
+}
+
+app.{$DOMAINE} {
+	import commun
+	reverse_proxy nginx:80
+}
+
+caisse.{$DOMAINE} {
+	import commun
+	reverse_proxy nginx:81
+}
+
+stock.{$DOMAINE} {
+	import commun
+	reverse_proxy nginx:82
+}

@@ -27,8 +27,8 @@ function ProtectedApp() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       {isOffline && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999, background: 'rgba(245,200,66,0.15)', borderBottom: '1px solid rgba(245,200,66,0.3)', padding: '6px 24px', fontSize: 12, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
-          ⚠ Mode démonstration — données locales (API non disponible)
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999, background: 'var(--accent-border)', borderBottom: '1px solid var(--accent-border)', padding: '6px 24px', fontSize: 12, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          ⚠ Serveur injoignable — vérifiez la connexion Internet. Les données affichées peuvent être incomplètes.
         </div>
       )}
       <Sidebar />

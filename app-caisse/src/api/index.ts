@@ -161,6 +161,17 @@ export const api = {
   delete: <T>(url: string) => apiFetch<T>(url, { method: 'DELETE' }),
 };
 
+/** Toutes les pages d'une liste paginée (catalogue complet, exports). */
+export async function fetchAllPages<T>(endpoint: string): Promise<T[]> {
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const results: T[] = [];
+  for (let page = 1; ; page++) {
+    const res = await api.get<PaginatedResponse<T>>(`${endpoint}${sep}page_size=1000&page=${page}`);
+    results.push(...res.results);
+    if (!res.next) return results;
+  }
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────
 export const authApi = {
   login: async (username: string, password: string) => {
@@ -189,6 +200,7 @@ export const authApi = {
 export const stockApi = {
   produits: {
     list: (params = '') => api.get<PaginatedResponse<Produit>>(`/stock/produits/${params}`),
+    listAll: () => fetchAllPages<Produit>('/stock/produits/'),
     get: (id: number) => api.get<Produit>(`/stock/produits/${id}/`),
     byBarcode: (code: string) => api.get<Produit>(`/stock/produits/par_barcode/?code=${code}`),
     alertes: () => api.get<{ ruptures: Produit[]; critiques: Produit[]; bas: Produit[] }>('/stock/produits/alertes/'),
@@ -243,7 +255,8 @@ export interface Produit {
   code_barres: string;
   nom: string;
   nom_en: string;
-  categorie: string;
+  categorie: number | null;
+  categorie_nom?: string;
   prix_xof: number;
   prix_eur: number;
   prix_usd: number;

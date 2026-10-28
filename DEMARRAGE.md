@@ -117,9 +117,9 @@ docker compose up -d              # relancer
 ## 8. Et pour la mise en ligne ?
 
 Ne pas utiliser cette configuration locale en production. Voir la section
-**« Mise en production »** du [README.md](README.md) : HTTPS, `SECRET_KEY` robuste,
-`PAYMENT_PROVIDER=cinetpay` + clés marchand, SMTP réel, sauvegardes, et lancement
-**sans** la surcharge locale :
+**« Mise en production »** du [README.md](README.md) : DNS (`app.`, `caisse.`, `stock.`),
+`DOMAINE` + `ACME_EMAIL`, `SECRET_KEY` robuste, `PAYMENT_PROVIDER=cinetpay` + clés marchand,
+SMTP réel, puis lancement avec la surcharge de production (HTTPS automatique + sauvegardes quotidiennes) :
 ```bash
-docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```

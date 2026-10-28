@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react';
 import { stockApi, type Produit } from '../api';
 import { ProductImage } from '../components/ProductImage';
-import { TrendingUp, TrendingDown, Minus, Download, Search, Filter } from 'lucide-react';
+import { Download, Search } from 'lucide-react';
+import { useBackofficeStore } from '../store/backofficeStore';
+import { downloadExcel } from '../utils/exports';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
-const fmtM = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(2)} M` : fmt(n);
+const STATUTS: Record<string, string> = { ok: 'OK', bas: 'Bas', critique: 'Critique', rupture: 'Rupture' };
 
 export function ProduitsPage() {
   const [produits, setProduits] = useState<Produit[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statut, setStatut] = useState('');
+  const boutique = useBackofficeStore(s => s.user?.organisation?.nom) || 'Duty Free';
 
   useEffect(() => {
     loadProduits();
@@ -17,8 +21,7 @@ export function ProduitsPage() {
 
   const loadProduits = async () => {
     try {
-      const response = await stockApi.produits.list();
-      setProduits(response.results);
+      setProduits(await stockApi.produits.listAll());
     } catch (error) {
       console.error('Erreur chargement produits:', error);
     } finally {
@@ -26,18 +29,33 @@ export function ProduitsPage() {
     }
   };
 
-  const filteredProduits = produits.filter(p => 
-    p.nom.toLowerCase().includes(search.toLowerCase()) ||
-    p.code.toLowerCase().includes(search.toLowerCase())
+  const filteredProduits = produits.filter(p =>
+    (!statut || p.statut_stock === statut) && (
+      p.nom.toLowerCase().includes(search.toLowerCase()) ||
+      p.code.toLowerCase().includes(search.toLowerCase()) ||
+      (p.code_barres || '').includes(search))
   );
+
+  const exporter = () => downloadExcel({
+    boutique, title: 'Catalogue produits', filename: `catalogue_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    sheets: [{
+      name: 'Produits',
+      headers: ['Code', 'Code-barres', 'Produit', 'Catégorie', 'Stock', 'Min', 'Unité', 'Prix XOF', 'Prix EUR', 'Prix USD', 'Statut'],
+      widths: [12, 16, 34, 16, 9, 8, 11, 12, 10, 10, 10],
+      rows: filteredProduits.map(p => [
+        p.code, p.code_barres, p.nom, p.categorie_nom || '', p.stock, p.stock_min, p.unite,
+        Number(p.prix_xof), Number(p.prix_eur), Number(p.prix_usd), STATUTS[p.statut_stock] ?? p.statut_stock,
+      ]),
+    }],
+  });
 
   return (
     <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ marginBottom: 36 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Gestion des produits</div>
+        <div className="page-eyebrow">Gestion des produits</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 className="serif" style={{ fontSize: 32, fontWeight: 700, color: 'var(--slate)' }}>Catalogue produits</h1>
-          <button className="btn btn-outline" style={{ gap: 6, fontSize: 12 }}><Download size={12} /> Export</button>
+          <h1 className="page-title">Catalogue produits</h1>
+          <button className="btn btn-outline" style={{ gap: 6, fontSize: 12 }} onClick={exporter} disabled={loading}><Download size={12} /> Export Excel</button>
         </div>
         <hr className="rule" style={{ marginTop: 16 }} />
       </div>
@@ -61,9 +79,11 @@ export function ProduitsPage() {
               }}
             />
           </div>
-          <button className="btn btn-outline" style={{ gap: 6 }}>
-            <Filter size={14} /> Filtres
-          </button>
+          <select value={statut} onChange={e => setStatut(e.target.value)} style={{ width: 180 }}>
+            <option value="">Tous les statuts</option>
+            {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{filteredProduits.length} / {produits.length}</span>
         </div>
       </div>
 
@@ -102,7 +122,7 @@ export function ProduitsPage() {
                       <div style={{ fontSize: 12, color: 'var(--muted)' }}>{produit.code}</div>
                     </div>
                   </td>
-                  <td style={{ color: 'var(--muted)', fontSize: 12 }}>{produit.categorie}</td>
+                  <td style={{ color: 'var(--muted)', fontSize: 12 }}>{produit.categorie_nom || '—'}</td>
                   <td>
                     <div className="mono">{produit.stock} {produit.unite}</div>
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>Min: {produit.stock_min}</div>

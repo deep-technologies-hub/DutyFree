@@ -1,0 +1,76 @@
+# Surcharge PRODUCTION : HTTPS automatique + sauvegardes quotidiennes.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Dans .env : DOMAINE, ACME_EMAIL et toutes les lignes [PROD] (voir .env.example).
+#
+#   https://app.<DOMAINE>     Backoffice, inscription, /admin/ (console opérateur)
+#   https://caisse.<DOMAINE>  Caisse
+#   https://stock.<DOMAINE>   Stock
+
+services:
+  # Seul point d'entrée public (80 → redirection HTTPS, 443). nginx n'est plus exposé.
+  caddy:
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAINE: ${DOMAINE:?DOMAINE requis (ex. mondomaine.com)}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL requis (alertes Let's Encrypt)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - nginx
+    restart: unless-stopped
+
+  nginx:
+    ports: !reset []
+
+  backend:
+    environment:
+      USE_HTTPS: "True"
+      NUM_PROXIES: 2   # Caddy + nginx : IP réelle du client pour la limitation de débit
+
+  scheduler:
+    environment:
+      USE_HTTPS: "True"
+      NUM_PROXIES: 2
+
+  # Sauvegarde quotidienne : base (pg_dump, format compressé) + photos produits.
+  # Les fichiers arrivent dans ./backups : copiez ce dossier hors du serveur (rclone, rsync…).
+  backup:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-dutyfree}
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      RETENTION_JOURS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+      - backend_media:/media:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          d=$$(date +%F_%H%M)
+          if pg_dump -Fc -f /backups/dutyfree_$$d.dump; then
+            tar -czf /backups/media_$$d.tar.gz -C /media . && echo "Sauvegarde $$d OK"
+          else
+            echo "ERREUR : sauvegarde $$d échouée" >&2
+          fi
+          find /backups -type f \( -name '*.dump' -o -name '*.tar.gz' \) -mtime +$$RETENTION_JOURS -delete
+          sleep 86400
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

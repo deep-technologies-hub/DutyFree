@@ -54,7 +54,7 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
 
   if (done) return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', flexDirection: 'column', gap: 18 }}>
-      <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--c-up-dim)', border: '2px solid rgba(34,197,94,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--c-up-dim)', border: '2px solid var(--c-up-bd)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Check size={38} color="var(--c-up)" strokeWidth={2.5} />
       </div>
       <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>Paiement accepté</div>
@@ -85,7 +85,7 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Total</div>
               <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 26, fontWeight: 700, color: 'var(--text)' }}>{fmt(total, activeCurrency)}</div>
             </div>
-            <div className="card" style={{ padding: '18px', textAlign: 'center', borderColor: isPaid ? 'rgba(34,197,94,0.3)' : 'var(--border)' }}>
+            <div className="card" style={{ padding: '18px', textAlign: 'center', borderColor: isPaid ? 'var(--c-up-bd)' : 'var(--border)' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
                 {isPaid ? 'Monnaie' : 'Reste à payer'}
               </div>
@@ -142,7 +142,7 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
           {/* Montants rapides */}
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 22 }}>
             <button onClick={() => setAmount(String(remaining.toFixed(2)))}
-              style={{ padding: '6px 13px', borderRadius: 6, border: '1px solid rgba(34,197,94,0.3)', background: 'var(--c-up-dim)', color: 'var(--c-up)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              style={{ padding: '6px 13px', borderRadius: 6, border: '1px solid var(--c-up-bd)', background: 'var(--c-up-dim)', color: 'var(--c-up)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
               Exact ({fmt(remaining, currency)})
             </button>
             {quickAmounts.map(v => (

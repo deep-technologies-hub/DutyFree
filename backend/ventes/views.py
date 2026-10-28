@@ -16,6 +16,30 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
                      'passager_nom', 'vol_reference', 'destination']
     ordering_fields = ['date_locale', 'total', 'caissier__last_name']
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action != 'list':
+            return qs
+        p = self.request.query_params
+        if p.get('date_debut'):
+            qs = qs.filter(date_locale__date__gte=p['date_debut'])
+        if p.get('date_fin'):
+            qs = qs.filter(date_locale__date__lte=p['date_fin'])
+        if p.get('numero_caisse'):
+            qs = qs.filter(numero_caisse=p['numero_caisse'])
+        if p.get('methode'):
+            qs = qs.filter(paiements__methode=p['methode']).distinct()
+        if p.get('statut'):
+            qs = qs.filter(statut=p['statut'])
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def caisses(self, request):
+        """Numéros de caisse ayant enregistré des ventes (filtres du backoffice)."""
+        numeros = (self.get_queryset().exclude(numero_caisse='')
+                   .values_list('numero_caisse', flat=True).distinct().order_by('numero_caisse'))
+        return Response(list(numeros))
+
     def get_serializer_class(self):
         if self.action == 'create':
             return VenteCreateSerializer
@@ -95,7 +119,8 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         # CA par moyen de paiement
         ca_by_payment = list(
             qs_month.values('paiements__methode')
-            .annotate(amount=Sum('paiements__montant_xof'))
+            # Montant encaissé net : la monnaie rendue sur les espèces n'est pas du CA
+            .annotate(amount=Sum(F('paiements__montant_xof') - F('paiements__monnaie_rendue')))
             .order_by('-amount')
         )
         
@@ -126,7 +151,8 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
             ).count()
             taux = round((tickets / dp.nombre_passagers) * 100, 2) if dp.nombre_passagers else 0
             results.append({
-                'annee': dp.annee, 'mois': dp.mois,
+                'id': dp.id, 'annee': dp.annee, 'mois': dp.mois,
+                'source': dp.source, 'notes': dp.notes,
                 'passagers': dp.nombre_passagers,
                 'tickets': tickets, 'taux': taux,
             })

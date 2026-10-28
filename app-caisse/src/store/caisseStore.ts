@@ -73,10 +73,11 @@ export const useCaisseStore = create<CaisseStore>()(
 
       loadProducts: async () => {
         try {
-          const res = await stockApi.produits.list();
-          set({ products: res.results, productsLoaded: true });
+          const products = await stockApi.produits.listAll();
+          set({ products, productsLoaded: true });
         } catch {
-          set({ products: [], productsLoaded: false });
+          // Hors ligne : on garde le dernier catalogue connu pour continuer à vendre
+          set(s => ({ productsLoaded: s.products.length > 0 }));
         }
       },
 
@@ -261,7 +262,7 @@ export const useCaisseStore = create<CaisseStore>()(
           p.nom.toLowerCase().includes(lower) ||
           p.code_barres?.includes(q) ||
           p.code.toLowerCase().includes(lower) ||
-          p.categorie?.toLowerCase().includes(lower)
+          p.categorie_nom?.toLowerCase().includes(lower)
         );
       },
     }),
@@ -272,6 +273,7 @@ export const useCaisseStore = create<CaisseStore>()(
         currentUser: s.currentUser,
         activeCurrency: s.activeCurrency,
         offlineQueue: s.offlineQueue,
+        products: s.products, // catalogue disponible hors ligne, même après un rechargement
         sales: s.sales.slice(0, 50), // Garder 50 dernières ventes
       }),
     }

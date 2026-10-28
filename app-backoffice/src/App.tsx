@@ -26,7 +26,7 @@ function ProtectedApp() {
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       {isOffline && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999, background: 'var(--accent-dim)', borderBottom: '1px solid var(--accent-border)', padding: '6px 24px', fontSize: 11, fontWeight: 700, color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: 6, letterSpacing: '0.05em' }}>
-          ⚠ MODE DÉMONSTRATION — données locales (API non disponible)
+          ⚠ SERVEUR INJOIGNABLE — vérifiez la connexion Internet
         </div>
       )}
       <Sidebar />

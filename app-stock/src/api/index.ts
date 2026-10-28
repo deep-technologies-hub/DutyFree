@@ -161,6 +161,17 @@ export const api = {
   delete: <T>(url: string) => apiFetch<T>(url, { method: 'DELETE' }),
 };
 
+/** Toutes les pages d'une liste paginée (catalogue complet, exports). */
+export async function fetchAllPages<T>(endpoint: string): Promise<T[]> {
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const results: T[] = [];
+  for (let page = 1; ; page++) {
+    const res = await api.get<PaginatedResponse<T>>(`${endpoint}${sep}page_size=1000&page=${page}`);
+    results.push(...res.results);
+    if (!res.next) return results;
+  }
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────
 export const authApi = {
   login: async (username: string, password: string) => {
@@ -189,12 +200,19 @@ export const authApi = {
 export const stockApi = {
   produits: {
     list: (params = '') => api.get<PaginatedResponse<Produit>>(`/stock/produits/${params}`),
+    listAll: () => fetchAllPages<Produit>('/stock/produits/'),
     get: (id: number) => api.get<Produit>(`/stock/produits/${id}/`),
     byBarcode: (code: string) => api.get<Produit>(`/stock/produits/par_barcode/?code=${code}`),
     alertes: () => api.get<{ ruptures: Produit[]; critiques: Produit[]; bas: Produit[] }>('/stock/produits/alertes/'),
     stats: () => api.get<StockStats>('/stock/produits/stats/'),
     create: (data: Partial<Produit>) => api.post<Produit>('/stock/produits/', data),
     update: (id: number, data: Partial<Produit>) => api.patch<Produit>(`/stock/produits/${id}/`, data),
+  },
+  categories: {
+    list: () => api.get<Categorie[]>('/stock/categories/avec_stats/'),
+    create: (data: Partial<Categorie>) => api.post<Categorie>('/stock/categories/', data),
+    update: (id: number, data: Partial<Categorie>) => api.patch<Categorie>(`/stock/categories/${id}/`, data),
+    delete: (id: number) => api.delete(`/stock/categories/${id}/`),
   },
   fournisseurs: {
     list: () => api.get<PaginatedResponse<Fournisseur>>('/stock/fournisseurs/'),
@@ -205,6 +223,8 @@ export const stockApi = {
   sommiers: {
     list: () => api.get<PaginatedResponse<Sommier>>('/stock/sommiers/'),
     aApurer: () => api.get<Sommier[]>('/stock/sommiers/a_apurer/'),
+    create: (data: Partial<Sommier>) => api.post<Sommier>('/stock/sommiers/', data),
+    update: (id: number, data: Partial<Sommier>) => api.patch<Sommier>(`/stock/sommiers/${id}/`, data),
   },
   mouvements: {
     list: (params = '') => api.get<PaginatedResponse<Mouvement>>(`/stock/mouvements/${params}`),
@@ -245,7 +265,8 @@ export interface Produit {
   code_barres: string;
   nom: string;
   nom_en: string;
-  categorie: string;
+  categorie: number | null;
+  categorie_nom?: string;
   prix_xof: number;
   prix_eur: number;
   prix_usd: number;
@@ -257,6 +278,16 @@ export interface Produit {
   fournisseur: number | null;
   fournisseur_nom?: string;
   photo_url?: string;
+}
+
+export interface Categorie {
+  id: number;
+  nom: string;
+  code: string;
+  description: string;
+  couleur: string;
+  icone: string;
+  nombre_produits: number;
 }
 
 export interface Fournisseur {

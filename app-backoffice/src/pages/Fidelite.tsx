@@ -5,9 +5,9 @@ import { fideliteApi, type CarteFidelite, type StatsFidelite } from '../api';
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 
 const NIVEAU_STYLE = {
-  bronze: { bg: 'rgba(180,83,9,0.12)', border: 'rgba(180,83,9,0.3)', text: '#FB923C', label: '● Bronze' },
-  silver: { bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.3)', text: '#94A3B8', label: '◆ Silver' },
-  gold:   { bg: 'rgba(245,200,66,0.12)',  border: 'rgba(245,200,66,0.3)',  text: 'var(--accent)', label: '★ Gold'  },
+  bronze: { bg: 'rgba(180,83,9,0.12)', border: 'rgba(180,83,9,0.3)', text: '#B45309', label: '● Bronze' },
+  silver: { bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.3)', text: '#475569', label: '◆ Silver' },
+  gold:   { bg: 'var(--accent-dim)',  border: 'var(--accent-border)',  text: 'var(--accent)', label: '★ Gold'  },
 };
 
 function NiveauBadge({ niveau }: { niveau: 'bronze' | 'silver' | 'gold' }) {
@@ -145,9 +145,9 @@ export function FidelitePage() {
 
       {/* En-tête */}
       <div style={{ marginBottom: 32 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Gestion clients</div>
+        <div className="page-eyebrow">Gestion clients</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.01em' }}>Programme Fidélité</h1>
+          <h1 className="page-title">Programme Fidélité</h1>
           <button onClick={() => { setModalCarte(null); setShowModal(true); }} className="btn btn-primary" style={{ gap: 7, fontSize: 13 }}>
             <Plus size={14} /> Nouvelle carte
           </button>
@@ -157,7 +157,7 @@ export function FidelitePage() {
 
       {/* KPIs */}
       {stats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+        <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
           {[
             { label: 'Total cartes actives', value: fmt(stats.total_cartes), icon: <Users size={16} />, color: 'var(--blue)' },
             { label: 'Niveau Gold', value: fmt(stats.by_niveau.gold), icon: <Star size={16} />, color: 'var(--gold)' },

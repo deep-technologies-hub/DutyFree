@@ -68,11 +68,11 @@ export default function Fournisseurs() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 6 }}>Gestion des achats</div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Fournisseurs</h1>
-          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 0' }}>{suppliers.length} fournisseur{suppliers.length !== 1 ? 's' : ''} enregistré{suppliers.length !== 1 ? 's' : ''}</p>
+          <div className="page-eyebrow">Gestion des achats</div>
+          <h1 className="page-title">Fournisseurs</h1>
+          <p className="page-sub">{suppliers.length} fournisseur{suppliers.length !== 1 ? 's' : ''} enregistré{suppliers.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '10px 18px', color: 'var(--bg)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        <button onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '10px 18px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
           <Plus size={15} /> Nouveau fournisseur
         </button>
       </div>
@@ -104,10 +104,10 @@ export default function Fournisseurs() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, paddingTop: 14, borderTop: '1px solid var(--surface-2)' }}>
-              <button onClick={() => openEdit(s)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'rgba(245,200,66,0.08)', border: '1px solid rgba(245,200,66,0.2)', borderRadius: 7, padding: '8px', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => openEdit(s)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 7, padding: '8px', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                 <Edit2 size={12} /> Modifier
               </button>
-              <button onClick={() => setDeleteId(s.id)} style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-down)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => setDeleteId(s.id)} style={{ background: 'var(--c-down-dim)', border: '1px solid var(--c-down-bd)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-down)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                 <Trash2 size={13} />
               </button>
             </div>
@@ -129,7 +129,7 @@ export default function Fournisseurs() {
               <button onClick={closeModal} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}><X size={18} /></button>
             </div>
             <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {error && <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, padding: '10px 16px', fontSize: 12, color: 'var(--c-down)', display: 'flex', gap: 8 }}><AlertTriangle size={14} /> {error}</div>}
+              {error && <div style={{ background: 'var(--c-down-dim)', border: '1px solid var(--c-down-bd)', borderRadius: 8, padding: '10px 16px', fontSize: 12, color: 'var(--c-down)', display: 'flex', gap: 8 }}><AlertTriangle size={14} /> {error}</div>}
               <Field label="Nom de la société *" value={form.nom || ''} onChange={v => setField('nom', v)} placeholder="LVMH Distribution" />
               <Field label="Contact principal" value={form.contact || ''} onChange={v => setField('contact', v)} placeholder="Jean Dupont" />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -150,7 +150,7 @@ export default function Fournisseurs() {
             </div>
             <div style={{ padding: '16px 28px', borderTop: '1px solid var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button onClick={closeModal} style={{ background: 'transparent', border: '1px solid var(--border-2)', borderRadius: 8, padding: '9px 18px', color: 'var(--text-3)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Annuler</button>
-              <button onClick={handleSave} disabled={saving} style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '9px 20px', color: 'var(--bg)', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
+              <button onClick={handleSave} disabled={saving} style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '9px 20px', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
                 {saving ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={13} />}
                 {modalMode === 'create' ? 'Créer' : 'Enregistrer'}
               </button>

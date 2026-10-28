@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useBackofficeStore } from '../store/backofficeStore';
 import { ventesApi, wsUrl } from '../api';
 import { TrendingUp, TrendingDown, Minus, WifiOff, Zap, Download, Users } from 'lucide-react';
+import { METHODES } from '../utils/exports';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
@@ -83,7 +84,7 @@ function STitle({ children }: { children: string }) {
 }
 
 export default function Dashboard() {
-  const { dashboardData, fetchDashboard, tauxCapture, fetchTauxCapture } = useBackofficeStore();
+  const { dashboardData, fetchDashboard, tauxCapture, fetchTauxCapture, user } = useBackofficeStore();
   const { status, alerts, lastSale } = useWS();
   const [now, setNow] = useState(new Date());
 
@@ -147,13 +148,15 @@ export default function Dashboard() {
     }
   };
 
-  // Use API data instead of mock
-  const dailyCA = dashboardData?.ca_daily || [];
-  const caByCategory = dashboardData?.ca_by_categorie || [];
-  const caByPayment: Array<{ method: string; amount: number }> = (dashboardData as any)?.ca_by_payment?.map((p: any) => ({
-    method: p.paiements__methode,
-    amount: p.amount
-  })) || [];
+  // Libellé court du jour (« 28/10 ») pour l'axe des abscisses ; montants DRF convertis en nombres
+  const dailyCA = (dashboardData?.ca_daily || []).map(d => ({
+    ...d, ca: Number(d.ca), date: new Date(d.jour).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+  }));
+  const caByCategory = (dashboardData?.ca_by_categorie || []).map(c => ({ ...c, ca: Number(c.ca) }));
+  const caByPayment = (dashboardData?.ca_by_payment || []).map(p => ({
+    method: METHODES[p.paiements__methode] ?? p.paiements__methode,
+    amount: Number(p.amount),
+  }));
   const caByCashier = dashboardData?.ca_by_cashier || [];
 
   // Calculate KPIs from API data
@@ -173,8 +176,8 @@ export default function Dashboard() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 22 }}>
         <div>
-          <div className="section-label" style={{ marginBottom: 4 }}>Aéroport International de Ouagadougou · DJBC</div>
-          <h1 style={{ fontFamily: 'Playfair Display,Georgia,serif', fontSize: 24, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.01em' }}>Tableau de bord</h1>
+          <div className="page-eyebrow">{user?.organisation?.nom}</div>
+          <h1 className="page-title">Tableau de bord</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setShowPassagersModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '4px 10px', fontSize: 11, color: 'var(--text)', cursor: 'pointer' }}>
@@ -196,7 +199,7 @@ export default function Dashboard() {
       {alerts.length > 0 && <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>{alerts.map((a, i) => <div key={i} className={`alert ${a.level === 'danger' ? 'alert-red' : 'alert-warn'}`} style={{ fontSize: 11, padding: '5px 10px' }}>{a.message}</div>)}</div>}
 
       {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 7, marginBottom: 18 }}>
+      <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 7, marginBottom: 18 }}>
         <KpiCard label="Chiffre d'affaires" value={fmtM(todayCA) + ' XOF'} curr={todayCA} prev={yesterdayCA} sub="aujourd'hui" accent="var(--accent)" />
         <KpiCard label="Tickets émis" value={fmt(totalTickets)} curr={totalTickets} prev={0} sub="transactions" />
         <KpiCard label="Ticket moyen" value={fmt(avgTicket) + ' F'} curr={avgTicket} prev={0} sub="CA / ticket" />
@@ -208,6 +211,7 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: 7, marginBottom: 7 }}>
         <div className="card" style={{ padding: '16px 18px' }}>
           <STitle>Évolution CA — 7 derniers jours</STitle>
+          {last7.length === 0 ? <div className="empty-state"><strong>Aucune vente</strong>Le chiffre d'affaires apparaîtra ici dès la première vente.</div> : (
           <ResponsiveContainer width="100%" height={185}>
             <AreaChart data={last7} margin={{ top: 2, right: 2, bottom: 0, left: -18 }}>
               <defs>
@@ -222,10 +226,12 @@ export default function Dashboard() {
               <Area type="monotone" dataKey="ca" stroke="#3D75C4" strokeWidth={1.5} fill="url(#gCA)" dot={false} activeDot={{ r: 3, strokeWidth: 0, fill: '#3D75C4' }} />
             </AreaChart>
           </ResponsiveContainer>
+          )}
         </div>
 
         <div className="card" style={{ padding: '16px 18px' }}>
           <STitle>Catégories</STitle>
+          {caByCategory.length === 0 ? <div className="empty-state"><strong>Aucune vente</strong>Répartition du CA du mois par catégorie.</div> : <>
           <ResponsiveContainer width="100%" height={120}>
             <PieChart>
               <Pie data={caByCategory} cx="50%" cy="50%" innerRadius={32} outerRadius={50} dataKey="ca" paddingAngle={2} stroke="none">
@@ -251,6 +257,7 @@ export default function Dashboard() {
               );
             })}
           </div>
+          </>}
         </div>
       </div>
 
@@ -258,6 +265,7 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 7 }}>
         <div className="card" style={{ padding: '16px 18px' }}>
           <STitle>Tickets / jour</STitle>
+          {dailyCA.length === 0 ? <div className="empty-state"><strong>Aucune vente</strong>Nombre de tickets des 8 derniers jours.</div> : (
           <ResponsiveContainer width="100%" height={155}>
             <BarChart data={dailyCA.slice(-8)} margin={{ top: 2, right: 0, bottom: 0, left: -24 }} barSize={10}>
               <XAxis dataKey="date" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
@@ -268,15 +276,14 @@ export default function Dashboard() {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          )}
         </div>
 
         <div className="card" style={{ padding: '16px 18px' }}>
           <STitle>Modes de règlement</STitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginTop: 4 }}>
             {caByPayment.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-3)', fontSize: 11 }}>
-                Données de paiement non disponibles
-              </div>
+              <div className="empty-state"><strong>Aucune vente</strong>Encaissements du mois par moyen de paiement.</div>
             ) : caByPayment.map((d, i) => {
               const w = Math.round((d.amount / Math.max(...caByPayment.map(x => x.amount))) * 100);
               return <div key={d.method}>
@@ -294,6 +301,7 @@ export default function Dashboard() {
 
         <div className="card" style={{ padding: '16px 18px' }}>
           <STitle>Caissiers</STitle>
+          {caByCashier.length === 0 && <div className="empty-state"><strong>Aucune vente</strong>Classement des caissiers du mois.</div>}
           {caByCashier.map((d, i) => {
             const cashierName = `${d.caissier__first_name} ${d.caissier__last_name}`.trim();
             return (
@@ -318,7 +326,7 @@ export default function Dashboard() {
       {showPassagersModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000}}>
           <div className="card" style={{ width: '90%', maxWidth: 450, padding: 24 }}>
-            <h3 style={{ marginBottom: 16, fontSize: 18, fontWeight: 600, color: '#fff' }}>Saisir passagers (Mois)</h3>
+            <h3 style={{ marginBottom: 16, fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>Saisir passagers (Mois)</h3>
             <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 20 }}>Ces données (fournies par l'aéroport) permettent de calculer le taux de capture de la boutique.</p>
             <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
               <div style={{ flex: 1 }}>
@@ -339,7 +347,7 @@ export default function Dashboard() {
               <button 
                 onClick={submitPassagers} 
                 disabled={!passagersForm.nombre_passagers}
-                style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '8px 16px', color: 'var(--bg)', cursor: 'pointer', fontWeight: 600, opacity: !passagersForm.nombre_passagers ? 0.5 : 1 }}>
+                style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '8px 16px', color: '#fff', cursor: 'pointer', fontWeight: 600, opacity: !passagersForm.nombre_passagers ? 0.5 : 1 }}>
                 Enregistrer
               </button>
             </div>

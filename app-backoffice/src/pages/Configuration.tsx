@@ -59,16 +59,7 @@ export function ConfigurationPage() {
   useEffect(() => {
     configurationApi.get()
       .then(data => { setConfig(data); setDraft(data); })
-      .catch((_e: unknown) => { setErrMsg('Impossible de charger la configuration'); setDraft({
-        nom_boutique: 'DJBC Duty Free Ouagadougou', nif: 'BF-2024-00123456',
-        adresse: 'Aéroport International de Ouagadougou', telephone: '+226 25 30 65 00', email: '',
-        taux_eur_xof: 655.957, taux_usd_xof: 607.50,
-        msg_accueil_1: 'Bienvenue — Welcome', msg_accueil_2: 'Zone de transit international',
-        msg_politesse: 'Merci. Bon voyage — Thank you. Safe travels.',
-        seuil_alerte_stock: 10, delai_apurement_sommier: 30,
-        points_par_xof: 0.001, valeur_point_xof: 5,
-        seuil_fidelite_bronze: 100, seuil_fidelite_silver: 500, seuil_fidelite_gold: 1000,
-      }); })
+      .catch(() => { setErrMsg('Impossible de charger la configuration. Rechargez la page.'); setStatus('error'); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -95,16 +86,16 @@ export function ConfigurationPage() {
   return (
     <div className="fade-in" style={{ padding: '36px 40px', maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ marginBottom: 32 }}>
-        <div className="section-label" style={{ marginBottom: 6 }}>Paramètres système</div>
+        <div className="page-eyebrow">Paramètres système</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.01em' }}>Configuration</h1>
+          <h1 className="page-title">Configuration</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {status === 'saved' && <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 12, fontWeight: 600 }}><CheckCircle size={14} /> Sauvegardé</div>}
             {status === 'error' && <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--red)', fontSize: 12, fontWeight: 600 }}><AlertCircle size={14} /> {errMsg}</div>}
             <button onClick={() => { if (config) { setDraft(config); setStatus('idle'); } }} disabled={!hasChanges || saving} className="btn btn-ghost" style={{ gap: 6, fontSize: 12 }}>
               <RefreshCw size={13} /> Annuler
             </button>
-            <button onClick={handleSave} disabled={!hasChanges || saving} className="btn btn-primary" style={{ gap: 6, fontSize: 12 }}>
+            <button onClick={handleSave} disabled={!config || !hasChanges || saving} className="btn btn-primary" style={{ gap: 6, fontSize: 12 }}>
               {saving ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sauvegarde…</> : <><Save size={13} /> Sauvegarder</>}
             </button>
           </div>
@@ -158,7 +149,7 @@ export function ConfigurationPage() {
                       </label>
                       <input type={f.type} step={(f as any).step} value={val}
                         onChange={e => handleChange(f.key, f.type === 'number' ? parseFloat(e.target.value) : e.target.value)}
-                        style={{ width: '100%', boxSizing: 'border-box', background: changed ? 'rgba(245,200,66,0.05)' : 'var(--surface-2)', border: `1px solid ${changed ? 'var(--accent-border)' : 'var(--border-2)'}`, borderRadius: 8, padding: '10px 14px', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
+                        style={{ width: '100%', boxSizing: 'border-box', background: changed ? 'var(--accent-dim)' : 'var(--surface-2)', border: `1px solid ${changed ? 'var(--accent-border)' : 'var(--border-2)'}`, borderRadius: 8, padding: '10px 14px', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
                     </div>
                   );
                 })}

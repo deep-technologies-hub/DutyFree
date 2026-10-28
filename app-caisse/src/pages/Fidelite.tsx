@@ -21,8 +21,8 @@ interface CarteFidelite {
 
 const NIVEAU_COLORS = {
   bronze: { bg: 'rgba(180,83,9,0.15)', border: 'rgba(180,83,9,0.3)', text: 'var(--c-warn)' },
-  silver: { bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)', text: '#94A3B8' },
-  gold: { bg: 'rgba(245,200,66,0.15)', border: 'rgba(245,200,66,0.3)', text: 'var(--accent)' },
+  silver: { bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)', text: '#475569' },
+  gold: { bg: 'var(--accent-border)', border: 'var(--accent-border)', text: 'var(--accent)' },
 };
 
 function NiveauBadge({ niveau }: { niveau: 'bronze' | 'silver' | 'gold' }) {
@@ -111,7 +111,7 @@ export default function FidelitePage({ onClose, totalVenteXOF, numeroTicket, onC
   const pointsEnXOF = carte ? Math.floor(carte.points * 5) : 0;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(7,11,20,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, width: 520, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
         {/* Header */}
         <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -151,7 +151,7 @@ export default function FidelitePage({ onClose, totalVenteXOF, numeroTicket, onC
                   {loading ? '…' : <Search size={15} />}
                 </button>
               </div>
-              {erreur && <div style={{ marginTop: 10, padding: '10px 14px', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: 8, color: 'var(--c-down)', fontSize: 12 }}>{erreur}</div>}
+              {erreur && <div style={{ marginTop: 10, padding: '10px 14px', background: 'var(--c-down-dim)', border: '1px solid var(--c-down-bd)', borderRadius: 8, color: 'var(--c-down)', fontSize: 12 }}>{erreur}</div>}
             </div>
           )}
 
@@ -206,7 +206,7 @@ export default function FidelitePage({ onClose, totalVenteXOF, numeroTicket, onC
 
               {/* Points gagnés confirmation */}
               {pointsGagnes !== null && (
-                <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ background: 'var(--c-up-dim)', border: '1px solid var(--c-up-bd)', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Award size={18} color="var(--c-up)" />
                   <div>
                     <div style={{ fontWeight: 700, color: 'var(--c-up)', fontSize: 14 }}>+{pointsGagnes} points crédités !</div>
