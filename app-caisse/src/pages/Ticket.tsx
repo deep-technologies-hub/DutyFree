@@ -102,7 +102,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
           <div style={{ textAlign: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 18, marginBottom: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 6 }}>
               <div style={{ width: 28, height: 28, background: 'var(--accent)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ShoppingBag size={14} color="var(--bg)" />
+                <ShoppingBag size={14} color="#fff" />
               </div>
               <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{nomBoutique.toUpperCase()}</div>
             </div>

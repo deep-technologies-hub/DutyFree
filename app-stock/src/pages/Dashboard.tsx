@@ -3,7 +3,7 @@ import { AlertTriangle, TrendingDown, Package, FileText, ArrowUpRight, ArrowDown
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(n);
-const G = ['#EA580C', '#14B8A6', '#F59E0B', '#3B82F6', '#8B5CF6', '#E53E3E'];
+const G = ['#1E3A8A', '#14B8A6', '#F59E0B', '#60A5FA', '#8B5CF6', '#E53E3E'];
 
 function CT({active,payload,label}:any) {
   if(!active||!payload?.length) return null;
@@ -78,7 +78,7 @@ export default function Dashboard() {
             <BarChart data={categoryData} barSize={22} margin={{top:2,right:2,bottom:0,left:-18}}>
               <XAxis dataKey="name" tick={{fontSize:10}} axisLine={false} tickLine={false}/>
               <YAxis tick={{fontSize:10}} axisLine={false} tickLine={false}/>
-              <Tooltip content={<CT/>} cursor={{fill:'rgba(234,88,12,0.04)'}}/>
+              <Tooltip content={<CT/>} cursor={{fill:'rgba(30,58,138,0.04)'}}/>
               <Bar dataKey="stock" radius={[3,3,0,0]}>
                 {categoryData.map((_,i)=><Cell key={i} fill={G[i%G.length]}/>)}
               </Bar>

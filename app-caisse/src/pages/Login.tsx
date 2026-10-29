@@ -76,7 +76,7 @@ export default function Login() {
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <div style={{ width: 44, height: 44, background: 'var(--accent)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-          <ShoppingCart size={20} color="#0C0D11" />
+          <ShoppingCart size={20} color="#fff" />
         </div>
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>Duty Free Manager</div>
         <div className="section-label" style={{ marginTop: 3 }}>Caisse{organisation ? ` · ${organisation}` : ''}</div>

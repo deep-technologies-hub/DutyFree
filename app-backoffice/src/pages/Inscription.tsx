@@ -62,7 +62,7 @@ export default function InscriptionPage() {
       <div style={{ maxWidth: 960, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
           <div style={{ width: 32, height: 32, background: 'var(--accent)', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <BarChart3 size={16} color="#0C0D11" strokeWidth={2.5} />
+            <BarChart3 size={16} color="#fff" strokeWidth={2.5} />
           </div>
           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>Duty Free Manager</div>
           <Link to="/login" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-2)' }}>Déjà client ? Se connecter</Link>

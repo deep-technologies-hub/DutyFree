@@ -6,7 +6,7 @@ import { Download } from 'lucide-react';
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)} M` : fmt(n);
 
-const G = ['#EA580C', '#14B8A6', '#F59E0B', '#3B82F6', '#8B5CF6', '#E53E3E', '#C9524A'];
+const G = ['#1E3A8A', '#14B8A6', '#F59E0B', '#60A5FA', '#8B5CF6', '#E53E3E', '#C9524A'];
 
 const PERIODS = ['Journalier', 'Décade', 'Mensuel', 'Vacation'];
 const AXES = ['CA Total', 'Tickets', 'CA Moyen', 'Taux Capture'];
@@ -30,7 +30,7 @@ function STitle({ label, title }: { label: string; title: string }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div className="section-label" style={{ marginBottom: 3 }}>{label}</div>
-      <div style={{ fontFamily: 'Playfair Display,Georgia,serif', fontSize: 18, fontWeight: 500, color: 'var(--text)' }}>{title}</div>
+      <div style={{ fontFamily: 'IBM Plex Sans, system-ui, sans-serif', fontSize: 18, fontWeight: 500, color: 'var(--text)' }}>{title}</div>
     </div>
   );
 }
@@ -179,7 +179,7 @@ export default function Reporting() {
               <Tooltip content={<CT />} />
               <Bar dataKey="tickets" radius={[2, 2, 0, 0]}>
                 {passengerData.map((_, i) => (
-                  <Cell key={i} fill={i === passengerData.length - 1 ? '#EA580C' : 'var(--surface-4)'} />
+                  <Cell key={i} fill={i === passengerData.length - 1 ? '#1E3A8A' : 'var(--surface-4)'} />
                 ))}
               </Bar>
             </BarChart>

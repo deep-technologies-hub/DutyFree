@@ -87,7 +87,7 @@ export default function POS() {
         {/* Caissier */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 28, height: 28, background: 'var(--accent)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <ShoppingCart size={14} color="#0C0D11" />
+            <ShoppingCart size={14} color="#fff" />
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{currentUser?.name || 'Caissier'}</div>

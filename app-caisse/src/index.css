@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 /* === app-caisse — index.css === */
 /* ================================================================
@@ -8,10 +8,9 @@
    Principe couleur : 95% neutre, 5% couleur = impact maximal
    
    Typo  : IBM Plex Sans (corps) + IBM Plex Mono (chiffres)
-           + Playfair Display (titres display)
 ================================================================ */
 
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -40,11 +39,11 @@
   --text-3:     #64748B;
   --text-4:     #94A3B8;
 
-  /* ─ Accent — Orange premium (Hermès / Sunset) */
-  --accent:        #EA580C;
-  --accent-bright: #F97316;
-  --accent-dim:    rgba(234,88,12,0.08);
-  --accent-border: rgba(234,88,12,0.18);
+  /* ─ Accent — Bleu marine */
+  --accent:        #1E3A8A;
+  --accent-bright: #1E40AF;
+  --accent-dim:    rgba(30,58,138,0.08);
+  --accent-border: rgba(30,58,138,0.18);
 
   /* ─ Couleurs sémantiques data */
   --c-up:       #059669;   /* vert — hausse, OK, entrée */
@@ -64,10 +63,10 @@
   --c-info-bd:  rgba(37,99,235,0.18);
 
   /* ─ Palette graphiques — 6 teintes coordonnées claires */
-  --g1: #EA580C;   /* orange  */
+  --g1: #1E3A8A;   /* bleu marine */
   --g2: #14B8A6;   /* teal    */
   --g3: #F59E0B;   /* ambre   */
-  --g4: #3B82F6;   /* bleu    */
+  --g4: #60A5FA;   /* bleu clair */
   --g5: #8B5CF6;   /* violet  */
   --g6: #E53E3E;   /* rouge   */
 
@@ -116,7 +115,7 @@ body {
 
 /* Typo helpers */
 .mono { font-family: "IBM Plex Mono", monospace; }
-.display { font-family: "Playfair Display", Georgia, serif; }
+.display { font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 700; letter-spacing: -0.02em; }
 
 /* ── Cards ─────────────────────────────────────────────────────── */
 .card {
@@ -166,7 +165,7 @@ body {
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-bright);
-  box-shadow: 0 4px 14px rgba(234,88,12,0.25);
+  box-shadow: 0 4px 14px rgba(30,58,138,0.25);
 }
 
 .btn-ghost {
@@ -298,8 +297,8 @@ textarea {
   width: 100%;
 }
 input:focus, select:focus, textarea:focus {
-  border-color: rgba(234,88,12,0.35);
-  box-shadow: 0 0 0 3px rgba(234,88,12,0.06);
+  border-color: rgba(30,58,138,0.35);
+  box-shadow: 0 0 0 3px rgba(30,58,138,0.06);
 }
 input::placeholder { color: var(--text-4); }
 select { cursor: pointer; }
@@ -528,11 +527,11 @@ input[type="number"] { font-family: "IBM Plex Mono", monospace; }
   margin-bottom: 6px;
 }
 .page-title {
-  font-family: "Playfair Display", Georgia, serif;
-  font-size: 28px;
-  font-weight: 500;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   color: var(--text);
   margin: 0;
 }
@@ -541,7 +540,7 @@ input[type="number"] { font-family: "IBM Plex Mono", monospace; }
   color: var(--text-3);
   margin: 6px 0 0;
 }
-.serif { font-family: "Playfair Display", Georgia, serif; font-weight: 500; }
+.serif { font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 600; }
 
 /* État vide (graphiques et listes sans données) */
 .empty-state {

@@ -393,7 +393,7 @@ export default function CategoriesPage() {
                   Couleur
                 </label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {['#EA580C', '#14B8A6', '#F59E0B', '#3B82F6', '#8B5CF6', '#E53E3E'].map(color => (
+                  {['#1E3A8A', '#14B8A6', '#F59E0B', '#60A5FA', '#8B5CF6', '#E53E3E'].map(color => (
                     <button
                       key={color}
                       type="button"

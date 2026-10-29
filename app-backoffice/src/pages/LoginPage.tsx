@@ -23,7 +23,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <div style={{width:32,height:32,background:'var(--accent)',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <BarChart3 size={16} color="#0C0D11" strokeWidth={2.5}/>
+            <BarChart3 size={16} color="#fff" strokeWidth={2.5}/>
           </div>
           <div>
             <div style={{fontWeight:700,fontSize:13.5,color:'var(--text)'}}>Duty Free Manager</div>
@@ -36,9 +36,9 @@ export default function LoginPage() {
           <div style={{fontSize:10,fontWeight:600,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.2em',marginBottom:14}}>
             Logiciel de gestion en ligne
           </div>
-          <h1 style={{fontFamily:'Playfair Display,Georgia,serif',fontSize:46,fontWeight:500,color:'var(--text)',lineHeight:1.12,letterSpacing:'-0.02em',marginBottom:18}}>
+          <h1 style={{fontFamily: 'IBM Plex Sans, system-ui, sans-serif',fontSize:46,fontWeight: 700,color:'var(--text)',lineHeight:1.12,letterSpacing:'-0.02em',marginBottom:18}}>
             Votre boutique<br/>
-            <em style={{color:'var(--accent)',fontStyle:'italic'}}>Duty Free</em><br/>
+            <em style={{color:'var(--accent)',fontStyle: 'normal'}}>Duty Free</em><br/>
             dans le cloud
           </h1>
           <p style={{fontSize:13,color:'var(--text-3)',lineHeight:1.65,maxWidth:360}}>
