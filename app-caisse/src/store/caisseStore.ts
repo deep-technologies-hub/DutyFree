@@ -4,9 +4,33 @@ import { stockApi, ventesApi, authApi, authStorage } from '../api';
 import type { Produit, VentePayload } from '../api';
 import type { CartItem, Sale, User, Currency, Payment } from '../types';
 
-let ticketCounter = parseInt(localStorage.getItem('df_ticket_counter') || '1001');
+// Numéro de ticket : T<AAMMJJ>-<appareil>-<séquence du jour>, ex. T261029-K7QZ-0001.
+// Généré hors ligne, il doit rester unique entre caisses : le serveur rejette les doublons
+// et la resynchronisation considère un numéro déjà connu comme « déjà envoyé ».
+// L'identifiant d'appareil est tiré au hasard une fois ; s'il est effacé, un nouveau
+// est tiré, ce qui évite de reprendre une séquence déjà utilisée.
+const deviceId = (() => {
+  let id = localStorage.getItem('df_device_id');
+  if (!id) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(4));
+    id = Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
+    localStorage.setItem('df_device_id', id);
+  }
+  return id;
+})();
 
-const saveCounter = () => localStorage.setItem('df_ticket_counter', String(ticketCounter));
+const nextTicketNumber = () => {
+  const d = new Date();
+  const jour = `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  let seq = 1;
+  try {
+    const prev = JSON.parse(localStorage.getItem('df_ticket_seq') || 'null');
+    if (prev?.jour === jour) seq = prev.seq + 1;
+  } catch { /* compteur illisible : on repart à 1 */ }
+  localStorage.setItem('df_ticket_seq', JSON.stringify({ jour, seq }));
+  return `T${jour}-${deviceId}-${String(seq).padStart(4, '0')}`;
+};
 
 // Exchange rates from API
 const exchangeRates = {
@@ -152,8 +176,7 @@ export const useCaisseStore = create<CaisseStore>()(
         const { cart, currentUser, activeCurrency, passengerName, flightRef, destination, isOnline, rates } = get();
         const now = new Date().toISOString();
         const total = get().cartTotal();
-        const ticketNumber = `TK-${String(ticketCounter++).padStart(4, '0')}`;
-        saveCounter();
+        const ticketNumber = nextTicketNumber();
 
         const sale: Sale = {
           id: `sale-${Date.now()}`,
