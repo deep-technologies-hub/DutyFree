@@ -192,7 +192,7 @@ SIMULATEUR_HTML = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
 .c{background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(15,23,42,.08);padding:28px;max-width:400px;width:100%}
 .t{font-size:12px;color:#64748B;text-transform:uppercase;letter-spacing:.12em}.m{font-size:30px;font-weight:700;margin:6px 0 2px}
 .b{display:block;width:100%;padding:13px;border:0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px}
-.om{background:#EA580C;color:#fff}.cb{background:#0F172A;color:#fff}.ko{background:#E8EEF4;color:#DC2626}
+.om{background:#1E3A8A;color:#fff}.cb{background:#0F172A;color:#fff}.ko{background:#E8EEF4;color:#DC2626}
 .w{background:#FEF3C7;color:#92400E;font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:16px}</style></head>
 <body><form class="c" method="post">
 <div class="w">Mode test : aucun argent n'est débité.</div>

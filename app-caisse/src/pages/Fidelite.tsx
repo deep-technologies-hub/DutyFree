@@ -57,7 +57,7 @@ export default function FidelitePage({ onClose, totalVenteXOF, numeroTicket, onC
   const chercher = useCallback(async () => {
     if (!recherche.trim() || recherche.length < 10) {
       if (recherche.length > 0 && recherche.length < 10) {
-        setErreur('Numéro de carte incomplet (ex: DF00000001)');
+        setErreur('Numéro de carte incomplet (10 caractères).');
       }
       return;
     }
@@ -68,7 +68,7 @@ export default function FidelitePage({ onClose, totalVenteXOF, numeroTicket, onC
         setCarte(await res.json());
         setMode('details');
       } else if (res.status === 404) {
-        setErreur('Carte non trouvée. Exemples: DF00000001, DF00000002, DF00000003, DF00000004, DF00000005');
+        setErreur('Carte non trouvée. Vérifiez le numéro imprimé sur la carte.');
       } else {
         setErreur('Erreur lors de la recherche. Réessayez plus tard.');
       }
@@ -233,10 +233,10 @@ export default function FidelitePage({ onClose, totalVenteXOF, numeroTicket, onC
                 )}
                 {onCarteSelectionnee && (
                   <button onClick={() => onCarteSelectionnee(carte)} className="btn btn-ghost" style={{ padding: '10px', fontSize: 12, justifyContent: 'center', gap: 6 }}>
-                    <ChevronRight size={14} /> Associer à ce ticket
+                    <ChevronRight size={14} /> Associer à la vente en cours
                   </button>
                 )}
-                {!totalVenteXOF && (
+                {!totalVenteXOF && !onCarteSelectionnee && (
                   <div style={{ fontSize: 11, color: 'var(--text-3)', textAlign: 'center', padding: '8px' }}>
                     Consultez ou gérez les points depuis le backoffice superviseur.
                   </div>

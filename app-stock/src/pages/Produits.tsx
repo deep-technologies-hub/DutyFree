@@ -19,11 +19,11 @@ function Field({ label, value, onChange, placeholder = '' }: { label: string; va
     </div>
   );
 }
-function NumberField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (v: number) => void; step?: number }) {
+function NumberField({ label, value, onChange, step = 1, disabled = false, title }: { label: string; value: number; onChange: (v: number) => void; step?: number; disabled?: boolean; title?: string }) {
   return (
     <div>
       <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>{label}</label>
-      <input type="number" min="0" step={step} value={value} onChange={e => onChange(Number(e.target.value))} style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border-2)', borderRadius: 7, padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: 'IBM Plex Mono, monospace', outline: 'none', boxSizing: 'border-box' }} />
+      <input type="number" min="0" step={step} value={value} disabled={disabled} title={title} onChange={e => onChange(Number(e.target.value))} style={{ width: '100%', opacity: disabled ? 0.6 : 1, background: 'var(--bg)', border: '1px solid var(--border-2)', borderRadius: 7, padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: 'IBM Plex Mono, monospace', outline: 'none', boxSizing: 'border-box' }} />
     </div>
   );
 }
@@ -234,7 +234,8 @@ export default function Produits() {
                     <NumberField label="Prix USD" value={form.prix_usd ?? 0} onChange={v => setField('prix_usd', v)} step={0.01} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-                    <NumberField label="Stock initial" value={form.stock ?? 0} onChange={v => setField('stock', v)} />
+                    <NumberField label={modalMode === 'edit' ? 'Stock actuel' : 'Stock initial'} value={form.stock ?? 0} onChange={v => setField('stock', v)}
+                      disabled={modalMode === 'edit'} title={modalMode === 'edit' ? 'Le stock se modifie par un mouvement (page Mouvements ou Inventaire)' : undefined} />
                     <NumberField label="Stock minimum" value={form.stock_min ?? 5} onChange={v => setField('stock_min', v)} />
                     <NumberField label="Stock maximum" value={form.stock_max ?? 100} onChange={v => setField('stock_max', v)} />
                   </div>

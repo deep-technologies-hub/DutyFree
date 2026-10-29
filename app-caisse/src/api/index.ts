@@ -354,6 +354,8 @@ export interface VentePayload {
   passager_nom?: string;
   vol_reference?: string;
   destination?: string;
+  /** Carte fidélité associée : le serveur crédite les points à l'enregistrement de la vente */
+  carte_fidelite?: number | null;
   synced: boolean;
   date_locale: string;
   lignes: LigneVentePayload[];

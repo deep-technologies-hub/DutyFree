@@ -50,6 +50,8 @@ const priceInCurrency = (p: Produit, currency: Currency) => {
   return Number(p.prix_xof) || 0;
 };
 
+export interface CarteAssociee { id: number; numero: string; nom: string }
+
 interface CaisseStore {
   currentUser: User | null;
   isOnline: boolean;
@@ -71,6 +73,8 @@ interface CaisseStore {
   destination: string;
   setPassenger: (name: string, flight: string, dest: string) => void;
   clearPassenger: () => void;
+  carteFidelite: CarteAssociee | null;
+  setCarteFidelite: (carte: CarteAssociee | null) => void;
   sales: Sale[];
   offlineQueue: VentePayload[];
   completeSale: (payments: Payment[]) => Sale;
@@ -144,7 +148,7 @@ export const useCaisseStore = create<CaisseStore>()(
           })
         }));
       },
-      clearCart: () => set({ cart: [], passengerName: '', flightRef: '', destination: '' }),
+      clearCart: () => set({ cart: [], passengerName: '', flightRef: '', destination: '', carteFidelite: null }),
       cartTotal: () => {
         const { cart, activeCurrency, rates } = get();
         cart.forEach((item, index) => {
@@ -169,11 +173,14 @@ export const useCaisseStore = create<CaisseStore>()(
       setPassenger: (name, flight, dest) => set({ passengerName: name, flightRef: flight, destination: dest }),
       clearPassenger: () => set({ passengerName: '', flightRef: '', destination: '' }),
 
+      carteFidelite: null,
+      setCarteFidelite: (carte) => set({ carteFidelite: carte }),
+
       sales: [],
       offlineQueue: [],
 
       completeSale: (payments) => {
-        const { cart, currentUser, activeCurrency, passengerName, flightRef, destination, isOnline, rates } = get();
+        const { cart, currentUser, activeCurrency, passengerName, flightRef, destination, carteFidelite, isOnline, rates } = get();
         const now = new Date().toISOString();
         const total = get().cartTotal();
         const ticketNumber = nextTicketNumber();
@@ -208,6 +215,7 @@ export const useCaisseStore = create<CaisseStore>()(
           remise_totale: sale.discountTotal,
           total,
           passager_nom: passengerName,
+          carte_fidelite: carteFidelite?.id ?? null,
           vol_reference: flightRef,
           destination,
           synced: isOnline,

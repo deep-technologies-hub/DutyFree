@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from tenants.mixins import TenantScopedViewSetMixin
-from tenants.permissions import TENANT_PERMISSIONS, IsTenantAdmin
+from tenants.permissions import GESTION, TENANT_PERMISSIONS, IsTenantAdmin
 from tenants.quotas import verifier_quota, verifier_quota_caisse
 from .models import Utilisateur
 from .securite import revoquer_sessions
@@ -54,6 +54,9 @@ class UtilisateurViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     serializer_class = UtilisateurSerializer
     search_fields = ['username', 'first_name', 'last_name', 'email', 'role']
     ordering_fields = ['last_name', 'role', 'last_login']
+
+    # Liste du personnel (e-mails, téléphones) : gestion uniquement
+    roles_lecture = GESTION
 
     def get_permissions(self):
         perms = [p() for p in TENANT_PERMISSIONS]

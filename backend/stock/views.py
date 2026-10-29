@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from tenants.mixins import TenantScopedViewSetMixin
+from tenants.permissions import GESTION_STOCK
 from tenants.quotas import verifier_quota
 from .models import Fournisseur, Categorie, Produit, Sommier, MouvementStock, CommandeFournisseur, LigneCommande
 from .serializers import (FournisseurSerializer, CategorieSerializer, ProduitSerializer, ProduitListSerializer,
@@ -18,6 +19,7 @@ from .serializers import (FournisseurSerializer, CategorieSerializer, ProduitSer
 
 class CategorieViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     """Gestion des catégories de produits"""
+    roles_ecriture = GESTION_STOCK
     queryset = Categorie.objects.filter(actif=True)
     serializer_class = CategorieSerializer
     search_fields = ['nom', 'code', 'description']
@@ -43,12 +45,14 @@ class CategorieViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 
 
 class FournisseurViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+    roles_lecture = roles_ecriture = GESTION_STOCK
     queryset = Fournisseur.objects.filter(actif=True)
     serializer_class = FournisseurSerializer
     search_fields = ['nom', 'contact', 'pays']
 
 
 class ProduitViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+    roles_ecriture = GESTION_STOCK
     queryset = Produit.objects.filter(actif=True).select_related('fournisseur', 'categorie')
     search_fields = ['nom', 'code', 'code_barres', 'categorie__nom']
     ordering_fields = ['nom', 'categorie__nom', 'stock', 'prix_xof']
@@ -100,6 +104,7 @@ class ProduitViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 
 
 class SommierViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+    roles_lecture = roles_ecriture = GESTION_STOCK
     queryset = Sommier.objects.select_related('produit').all()
     serializer_class = SommierSerializer
     search_fields = ['numero', 'reference_djbc', 'produit__nom']
@@ -113,6 +118,7 @@ class SommierViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 
 
 class MouvementStockViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+    roles_lecture = roles_ecriture = GESTION_STOCK
     queryset = MouvementStock.objects.select_related('produit', 'utilisateur', 'sommier').all()
     serializer_class = MouvementStockSerializer
     search_fields = ['produit__nom', 'type_mouvement', 'motif', 'reference']
@@ -124,6 +130,7 @@ class MouvementStockViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 
 
 class CommandeFournisseurViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+    roles_lecture = roles_ecriture = GESTION_STOCK
     queryset = CommandeFournisseur.objects.select_related('fournisseur').prefetch_related('lignes__produit').all()
     serializer_class = CommandeFournisseurSerializer
     search_fields = ['numero', 'fournisseur__nom', 'statut']

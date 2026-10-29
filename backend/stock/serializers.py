@@ -26,6 +26,16 @@ class ProduitSerializer(TenantModelSerializer):
         fields = '__all__'
         extra_kwargs = {'code_barres': {'required': False, 'default': ''}}
 
+    def validate(self, attrs):
+        # Stock initial à la création seulement : ensuite il ne bouge que par des mouvements
+        # (entrée, sortie, inventaire), pour garder la traçabilité exigée par la douane.
+        # Le formulaire renvoie la valeur affichée, qui a pu changer entre-temps (vente) : ignorée.
+        if self.instance is not None:
+            attrs.pop('stock', None)
+        elif attrs.get('stock', 0) < 0:
+            raise serializers.ValidationError({'stock': 'Le stock initial ne peut pas être négatif.'})
+        return attrs
+
 class ProduitListSerializer(TenantModelSerializer):
     statut_stock = serializers.ReadOnlyField()
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)

@@ -281,6 +281,8 @@ export const ventesApi = {
     return fetchAllPages<VenteListItem>(`/ventes/${qs ? `?${qs}` : ''}`);
   },
   caisses: () => api.get<string[]>('/ventes/caisses/'),
+  /** Annule une vente (remise en stock, sommier et points rétablis). Réservé admin / superviseur. */
+  annuler: (id: number, motif: string) => api.post<VenteListItem>(`/ventes/${id}/annuler/`, { motif }),
   syncOffline: (ventes: VentePayload[]) =>
     api.post<{ synced: number; errors: unknown[] }>('/ventes/sync_offline/', { ventes }),
   dashboard: () => api.get<DashboardData>('/ventes/dashboard/'),

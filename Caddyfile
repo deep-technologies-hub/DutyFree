@@ -8,6 +8,8 @@
 (commun) {
 	encode zstd gzip
 	header -Server
+	# HTTPS imposé au navigateur pendant un an (pages et API)
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 }
 
 app.{$DOMAINE} {

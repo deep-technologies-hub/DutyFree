@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useBackofficeStore } from '../store/backofficeStore';
 import { ventesApi, type ApiError, type VenteListItem } from '../api';
 import { downloadExcel, downloadPdf, venteXof, methodesVente, fmtDateHeure, fmtNombre } from '../utils/exports';
@@ -22,6 +23,28 @@ export default function Ventes() {
   const [caisses, setCaisses] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<VenteListItem | null>(null);
+  const [motif, setMotif] = useState('');
+  const [annulation, setAnnulation] = useState<{ enCours: boolean; erreur: string }>({ enCours: false, erreur: '' });
+
+  const ouvrirTicket = (sale: VenteListItem | null) => {
+    setSelectedTicket(sale);
+    setMotif('');
+    setAnnulation({ enCours: false, erreur: '' });
+  };
+
+  const annulerVente = async () => {
+    if (!selectedTicket || !motif.trim()) return;
+    setAnnulation({ enCours: true, erreur: '' });
+    try {
+      const maj = await ventesApi.annuler(selectedTicket.id, motif.trim());
+      setSelectedTicket({ ...selectedTicket, statut: maj.statut });
+      setAnnulation({ enCours: false, erreur: '' });
+      const qs = new URLSearchParams(Object.entries(filtres).filter(([, v]) => v)).toString();
+      fetchVentes(qs ? `?${qs}` : '');
+    } catch (e) {
+      setAnnulation({ enCours: false, erreur: (e as ApiError).message || "Annulation impossible." });
+    }
+  };
 
   useEffect(() => {
     ventesApi.caisses().then(setCaisses).catch(() => setCaisses([]));
@@ -44,22 +67,24 @@ export default function Ventes() {
     setExporting(true);
     try {
       const toutes = await ventesApi.listAll(filtres);
-      const total = toutes.reduce((s, v) => s + venteXof(v), 0);
+      // Les ventes annulées restent listées (traçabilité) mais ne comptent pas dans le total
+      const payees = toutes.filter(v => v.statut !== 'annulee');
+      const total = payees.reduce((s, v) => s + venteXof(v), 0);
       const rows = toutes.map(v => [
         v.numero_ticket, fmtDateHeure(v.date_locale), v.numero_caisse, v.caissier_nom, v.nb_articles,
-        Math.round(venteXof(v)), methodesVente(v), v.passager_nom || '',
+        Math.round(venteXof(v)), methodesVente(v), v.passager_nom || '', v.statut === 'annulee' ? 'Annulée' : 'Payée',
       ]);
-      const headers = ['N° ticket', 'Date', 'Caisse', 'Vendeur', 'Articles', 'Montant XOF', 'Paiement', 'Passager'];
+      const headers = ['N° ticket', 'Date', 'Caisse', 'Vendeur', 'Articles', 'Montant XOF', 'Paiement', 'Passager', 'Statut'];
       const base = { boutique, title: 'Ventes & tickets', filename: `ventes_${new Date().toISOString().slice(0, 10)}` };
       if (format === 'excel') {
         await downloadExcel({ ...base, filename: `${base.filename}.xlsx`, sheets: [{
-          name: 'Ventes', headers, rows, widths: [20, 18, 12, 22, 9, 14, 20, 22],
-          total: ['TOTAL', `${toutes.length} tickets`, '', '', '', Math.round(total)],
+          name: 'Ventes', headers, rows, widths: [20, 18, 12, 22, 9, 14, 20, 22, 10],
+          total: ['TOTAL', `${payees.length} tickets payés`, '', '', '', Math.round(total)],
         }] });
       } else {
         downloadPdf({ ...base, filename: `${base.filename}.pdf`, landscape: true, headers,
           rows: rows.map(r => r.map((c, i) => (i === 5 ? fmtNombre(Number(c)) : c))),
-          total: ['TOTAL', `${toutes.length} tickets`, '', '', '', fmtNombre(total), '', ''] });
+          total: ['TOTAL', `${payees.length} tickets payés`, '', '', '', fmtNombre(total), '', '', ''] });
       }
     } catch (e) {
       alert(`Export impossible : ${(e as ApiError).message ?? 'réessayez'}`);
@@ -68,9 +93,10 @@ export default function Ventes() {
     }
   };
 
-  const totalCA = filtered.reduce((s, v) => s + venteXof(v), 0);
-  const avgTicket = filtered.length ? totalCA / filtered.length : 0;
-  const withPass = filtered.filter(s => s.passager_nom).length;
+  const payees = filtered.filter(v => v.statut !== 'annulee');
+  const totalCA = payees.reduce((s, v) => s + venteXof(v), 0);
+  const avgTicket = payees.length ? totalCA / payees.length : 0;
+  const withPass = payees.filter(s => s.passager_nom).length;
 
   return (
     <div className="fade-in" style={{ padding: '28px 32px', maxWidth: 1440, margin: '0 auto' }}>
@@ -94,9 +120,9 @@ export default function Ventes() {
       <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'var(--border)', borderRadius: 'var(--r)', overflow: 'hidden', marginBottom: 20, border: '1px solid var(--border)' }}>
         {[
           { label: 'CA affiché', value: fmtM(totalCA) + ' XOF', color: 'var(--accent)' },
-          { label: 'Transactions', value: String(filtered.length) },
+          { label: 'Transactions', value: String(payees.length) },
           { label: 'Ticket moyen', value: fmt(avgTicket) + ' F' },
-          { label: 'Avec passager ID', value: `${withPass} / ${filtered.length}`, color: 'var(--c-info)' },
+          { label: 'Avec passager ID', value: `${withPass} / ${payees.length}`, color: 'var(--c-info)' },
         ].map(k => (
           <div key={k.label} style={{ background: 'var(--surface)', padding: '15px 20px' }}>
             <div className="section-label" style={{ marginBottom: 5 }}>{k.label}</div>
@@ -159,6 +185,7 @@ export default function Ventes() {
                 <tr key={sale.id}>
                   <td>
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: 'var(--accent)' }}>{sale.numero_ticket}</span>
+                    {sale.statut === 'annulee' && <span className="badge badge-danger" style={{ marginLeft: 6 }}>Annulée</span>}
                   </td>
                   <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--text-3)' }}>
                     {new Date(sale.date_locale).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -168,7 +195,7 @@ export default function Ventes() {
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: 'var(--text-2)' }}>{sale.nb_articles ?? 0}</span>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, color: 'var(--text)', textDecoration: sale.statut === 'annulee' ? 'line-through' : undefined }}>
                       {sale.devise === 'XOF' ? fmt(Number(sale.total)) : Number(sale.total).toFixed(2)}
                     </span>
                     <span style={{ fontSize: 9, color: 'var(--text-3)', marginLeft: 4, fontFamily: 'Space Grotesk, sans-serif' }}>{sale.devise}</span>
@@ -186,7 +213,7 @@ export default function Ventes() {
                     {sale.passager_nom || '—'}
                   </td>
                   <td>
-                    <button className="btn btn-xs btn-ghost" style={{ gap: 4 }} onClick={() => setSelectedTicket(sale)}>
+                    <button className="btn btn-xs btn-ghost" style={{ gap: 4 }} onClick={() => ouvrirTicket(sale)}>
                       <Receipt size={10} /> Ticket
                     </button>
                   </td>
@@ -198,12 +225,12 @@ export default function Ventes() {
       </div>
 
       {/* Modal Ticket */}
-      {selectedTicket && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedTicket(null)}>
+      {selectedTicket && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => ouvrirTicket(null)}>
           <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, boxShadow: '0 24px 60px rgba(0,0,0,0.15)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '28px 24px', borderBottom: '1px dashed var(--border-3)', textAlign: 'center', background: '#FAFAFA' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' }}>{boutique}</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', fontFamily: 'IBM Plex Mono, monospace', margin: '4px 0' }}>Ticket #{selectedTicket.numero_ticket}</div>
+              <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--text)', fontFamily: 'IBM Plex Mono, monospace', margin: '4px 0', wordBreak: 'break-all' }}>Ticket {selectedTicket.numero_ticket}</div>
               <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{new Date(selectedTicket.date_locale).toLocaleString('fr-FR')}</div>
               <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 8, fontWeight: 500 }}>Caisse: <span style={{ fontFamily: 'IBM Plex Mono, monospace' }}>{selectedTicket.numero_caisse}</span></div>
               {selectedTicket.passager_nom && <div style={{ fontSize: 12, color: '#fff', background: 'var(--c-info)', display: 'inline-block', padding: '2px 8px', borderRadius: 12, marginTop: 8, fontWeight: 600 }}>{selectedTicket.passager_nom}{selectedTicket.vol_reference ? ` · Vol ${selectedTicket.vol_reference}` : ''}</div>}
@@ -235,8 +262,27 @@ export default function Ventes() {
               <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: -12, marginBottom: 16 }}>
                 Paiement : {methodesVente(selectedTicket)}
               </div>
+              {selectedTicket.statut === 'annulee' ? (
+                <div className="badge badge-danger" style={{ display: 'block', textAlign: 'center', padding: 8, marginBottom: 12 }}>
+                  Vente annulée : articles remis en stock
+                </div>
+              ) : (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Annuler cette vente</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input className="input" style={{ flex: 1 }} placeholder="Motif (obligatoire)" value={motif} maxLength={200}
+                      onChange={e => setMotif(e.target.value)} />
+                    <button className="btn btn-sm" disabled={!motif.trim() || annulation.enCours} onClick={annulerVente}
+                      style={{ background: 'var(--c-down)', color: '#fff', border: 'none' }}>
+                      {annulation.enCours ? 'Annulation…' : 'Annuler'}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>Les articles sont remis en stock, le sommier et les points fidélité sont rétablis.</div>
+                  {annulation.erreur && <div style={{ fontSize: 12, color: 'var(--c-down)', marginTop: 6 }}>{annulation.erreur}</div>}
+                </div>
+              )}
               <button 
-                onClick={() => setSelectedTicket(null)}
+                onClick={() => ouvrirTicket(null)}
                 style={{ width: '100%', padding: '14px', background: 'var(--text)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', transition: 'transform 0.1s' }}
                 onMouseDown={e => e.currentTarget.style.transform = 'scale(0.98)'}
                 onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
@@ -245,7 +291,8 @@ export default function Ventes() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

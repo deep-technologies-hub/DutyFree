@@ -24,7 +24,10 @@ class TenantAuthBackend(ModelBackend):
         for user in candidats:
             if not self.user_can_authenticate(user):
                 continue
-            if user.check_password(password) or (organisation and user.check_pin(password)):
+            # Le PIN (4 à 6 chiffres) n'ouvre que les comptes caissier : un admin ou un
+            # gestionnaire doit toujours saisir son mot de passe.
+            pin_ok = organisation and user.role == 'caissier' and user.check_pin(password)
+            if user.check_password(password) or pin_ok:
                 return user
         # Coût constant pour limiter l'énumération de comptes par mesure du temps.
         Utilisateur().set_password(password)

@@ -25,6 +25,10 @@ class LigneVenteSerializer(TenantModelSerializer):
 
 class LigneVenteWriteSerializer(TenantModelSerializer):
     """Utilisé à la création — le champ 'vente' est injecté dans create()"""
+    quantite = serializers.IntegerField(min_value=1, max_value=10000)
+    prix_unitaire = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0)
+    remise = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100, default=0)
+
     class Meta:
         model = LigneVente
         exclude = ['vente']   # ← clé du fix
@@ -32,6 +36,10 @@ class LigneVenteWriteSerializer(TenantModelSerializer):
 
 class PaiementWriteSerializer(TenantModelSerializer):
     """Utilisé à la création — le champ 'vente' est injecté dans create()"""
+    montant = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0)
+    montant_xof = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0)
+    monnaie_rendue = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0, default=0)
+
     class Meta:
         model = Paiement
         exclude = ['vente']   # ← clé du fix
@@ -46,7 +54,16 @@ class VenteCreateSerializer(TenantModelSerializer):
     class Meta:
         model = Vente
         fields = '__all__'
-        read_only_fields = ['caissier']
+        # Une vente arrive toujours « payée » : l'annulation passe par l'action dédiée.
+        read_only_fields = ['caissier', 'statut']
+
+    def validate(self, attrs):
+        if not attrs.get('lignes'):
+            raise serializers.ValidationError({'lignes': 'Une vente doit contenir au moins un article.'})
+        for champ in ('sous_total', 'total', 'remise_totale'):
+            if attrs.get(champ, 0) < 0:
+                raise serializers.ValidationError({champ: 'Montant négatif refusé.'})
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):

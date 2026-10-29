@@ -16,7 +16,8 @@ const sizeClasses = {
 export function ProductImage({ src, alt, size = 'medium', className = '' }: ProductImageProps) {
   const [imgError, setImgError] = useState(false);
   
-  const imageUrl = src && !imgError ? `http://localhost:8000${src}` : null;
+  // Chemin relatif servi par nginx (/media, /static) ; l'image par défaut laisse place aux initiales.
+  const imageUrl = src && !imgError && !src.endsWith('/no-image.svg') ? src : null;
   
   if (!imageUrl) {
     // Placeholder avec les initiales du produit

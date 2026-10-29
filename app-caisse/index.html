@@ -7,28 +7,7 @@
     <meta name="theme-color" content="#1E3A8A" />
     <link rel="manifest" href="/manifest.json" />
     <title>Caisse — Duty Free Manager</title>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => {
-              console.log('[SW] Enregistré:', reg.scope);
-              // Background sync au retour du réseau
-              window.addEventListener('online', () => {
-                if (reg.sync) reg.sync.register('sync-ventes').catch(() => {});
-              });
-            })
-            .catch(err => console.warn('[SW] Erreur:', err));
-
-          // Messages du SW vers l'app
-          navigator.serviceWorker.addEventListener('message', (event) => {
-            if (event.data?.type === 'NETWORK_BACK') {
-              window.dispatchEvent(new CustomEvent('sw-network-back'));
-            }
-          });
-        });
-      }
-    </script>
+    <script src="/register-sw.js"></script>
   </head>
   <body>
     <div id="root"></div>

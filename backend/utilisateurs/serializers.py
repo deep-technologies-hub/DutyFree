@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.cache import cache
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
@@ -40,10 +42,21 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 raise AuthenticationFailed('Ce compte entreprise est suspendu. Contactez le support.',
                                            code='organisation_suspended')
 
+        # Verrou par compte, en plus de la limite par adresse IP : un PIN de 4 chiffres
+        # ne doit pas pouvoir être deviné en multipliant les adresses.
+        cle = 'echecs-connexion:%s:%s' % (slug, (attrs.get('username') or '').strip().lower())
+        echecs = cache.get(cle, 0)
+        if echecs >= settings.LOGIN_MAX_ECHECS:
+            raise AuthenticationFailed(
+                f"Trop de tentatives incorrectes : compte bloqué {settings.LOGIN_VERROU_MINUTES} minutes.",
+                code='account_locked')
+
         user = authenticate(self.context.get('request'), username=attrs.get('username'),
                             password=attrs.get('password'), organisation=slug or None)
         if user is None:
+            cache.set(cle, echecs + 1, settings.LOGIN_VERROU_MINUTES * 60)
             raise AuthenticationFailed('Identifiants ou PIN incorrects', code='invalid_credentials')
+        cache.delete(cle)
 
         if jwt_settings.UPDATE_LAST_LOGIN:
             update_last_login(None, user)

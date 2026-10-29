@@ -229,6 +229,8 @@ npm run dev
 | `SAAS_NOM` | `Duty Free Manager` | Nom affiché dans les emails |
 | `JWT_ACCESS_MINUTES` | `120` | Durée de validité d'une session (renouvelée automatiquement 7 jours) |
 | `THROTTLE_LOGIN` / `THROTTLE_INSCRIPTION` | `20/min` / `10/hour` | Limitation anti-force brute |
+| `LOGIN_MAX_ECHECS` / `LOGIN_VERROU_MINUTES` | `8` / `15` | Verrouillage d'un compte après trop d'échecs de connexion |
+| `PAYMENT_SIMULATEUR_AUTORISE` | `False` (`True` en local) | Autorise le simulateur de paiement ; à laisser désactivé en production |
 | `EMAIL_*`, `DEFAULT_FROM_EMAIL` | — | Envoi des bons de commande aux fournisseurs |
 
 Frontends : `VITE_API_URL` (URL de l'API, avec `/api`) et `VITE_WS_URL` (vide = même hôte, recommandé derrière nginx).
@@ -240,11 +242,24 @@ Frontends : `VITE_API_URL` (URL de l'API, avec `/api`) et `VITE_WS_URL` (vide = 
 | Rôle | Backoffice | Caisse | Stock | Gestion utilisateurs, configuration, abonnement |
 |---|---|---|---|---|
 | Administrateur | ✅ | ✅ | ✅ | ✅ |
-| Superviseur | ✅ | ✅ | ✅ | — |
-| Stock manager | lecture | — | ✅ | — |
+| Superviseur | ✅ (annulation des ventes comprise) | ✅ | ✅ | lecture |
+| Stock manager | — | — | ✅ | — |
 | Caissier | — | ✅ (PIN) | — | — |
 
-- Les caissiers se connectent avec leur **PIN** (4 à 6 chiffres, stocké chiffré). Les autres rôles utilisent un mot de passe.
+Ces droits sont appliqués **par l'API**, pas seulement par les écrans (un appel direct à l'API avec le jeton d'un caissier est refusé) :
+
+| Données | Lecture | Écriture |
+|---|---|---|
+| Produits, catégories | tous (catalogue de la caisse) | admin, superviseur, stock |
+| Fournisseurs, sommiers, mouvements, commandes | admin, superviseur, stock | admin, superviseur, stock |
+| Ventes | admin, superviseur ; caissier : **ses propres ventes** | création : tous ; **ni modification ni suppression** ; annulation : admin, superviseur |
+| Tableau de bord, taux de capture, données passagers | admin, superviseur | admin, superviseur |
+| Fidélité | admin, superviseur ; caissier : recherche par n° et inscription | points en caisse : **uniquement sur une vente réelle, une seule fois** |
+| Utilisateurs | admin, superviseur | admin |
+
+- Les caissiers se connectent avec leur **PIN** (4 à 6 chiffres, stocké chiffré). Le PIN n'ouvre **que** les comptes caissier : les autres rôles utilisent toujours un mot de passe.
+- Une vente ne se modifie pas : une erreur se corrige par une **annulation motivée** (backoffice → Ventes → Ticket), qui remet les articles en stock, rétablit le sommier et retire les points fidélité gagnés. La vente reste visible au statut « Annulée » et sort des totaux.
+- Le stock d'un produit ne se modifie pas depuis sa fiche (seulement à la création) : il évolue par des mouvements (entrée, sortie, inventaire), pour la traçabilité douanière.
 - Les **comptes plateforme** (créés par `createsuperuser`, sans organisation) servent uniquement à l'administration `/admin/` et n'ont pas accès aux données des boutiques via l'API.
 
 ---
@@ -350,9 +365,12 @@ Les caissiers peuvent utiliser leur n° de caisse comme identifiant et leur PIN 
 - Isolation stricte des données par organisation (filtrage des requêtes + validation des références), testée automatiquement.
 - Mots de passe et PIN hachés (PBKDF2). Sessions JWT courtes (2 h) renouvelées automatiquement. Les refresh tokens sont **à usage unique** et **révoqués** à la déconnexion, au changement de mot de passe et à la désactivation d'un compte.
 - Mot de passe oublié par email (lien signé valable 2 h, à usage unique, sans révéler si un compte existe).
-- Limitation de débit sur la connexion, l'inscription et le paiement (nginx + Django, avec l'IP réelle du client).
+- Limitation de débit sur la connexion, l'inscription, le paiement et l'admin (nginx + Django, avec l'IP réelle du client), et **verrouillage du compte** pendant 15 min après 8 échecs de connexion (un PIN à 4 chiffres ne peut pas être deviné en multipliant les adresses IP).
+- Contrôle d'accès par rôle appliqué par l'API (voir [Rôles et accès](#rôles-et-accès)) ; ventes non modifiables, montants et quantités validés.
+- Politique de sécurité du contenu (CSP) sur les trois applications : aucun script en ligne ni externe autorisé, connexions limitées au site lui-même. Une injection de code ne peut ni charger de script tiers ni envoyer les jetons ailleurs.
 - Suspension d'une organisation effective immédiatement, même avec un jeton encore valide.
-- WebSockets authentifiés et cloisonnés. En-têtes de sécurité (`nosniff`, `X-Frame-Options`, HSTS en HTTPS…). Conteneur backend non-root. `SECRET_KEY` obligatoire en production.
+- WebSockets authentifiés et cloisonnés. En-têtes de sécurité (CSP, `nosniff`, `X-Frame-Options`, HSTS en HTTPS sur les pages et l'API). Conteneur backend non-root. `SECRET_KEY` obligatoire en production, et la clé d'exemple est refusée dès que `USE_HTTPS=True`.
+- Le simulateur de paiement (qui encaisse sans argent réel) est **désactivé par défaut** hors mode debug : il faut `PAYMENT_SIMULATEUR_AUTORISE=True` pour l'activer, ce que seul `docker-compose.override.yml` (local) fait.
 
 **Performances**
 - Utilisateur, organisation et plan chargés en **une seule requête SQL** par appel API.
@@ -414,7 +432,7 @@ python manage.py migrate
 cd backend
 python manage.py test
 ```
-53 tests (`tenants/tests.py`, `tenants/tests_paiements.py`, `ventes/tests.py`) : inscription, connexion par code entreprise et PIN, isolation entre organisations, unicité par organisation, quotas, rôles, cycle d'abonnement, paiement (simulateur et CinetPay simulé : montant falsifié, notification rejouée, fausse notification), renouvellement mensuel, déconnexion, refresh à usage unique, mot de passe oublié, suspension, nombre de requêtes SQL, ventes et synchronisation hors ligne, filtres et exports des ventes, catégories, sommiers, taux de capture.
+64 tests (`tenants/tests.py`, `tenants/tests_paiements.py`, `tenants/tests_securite.py`, `ventes/tests.py`) : droits par rôle (lecture, écriture, ventes d'un caissier), ventes non modifiables et annulation (stock, sommier, points), points fidélité liés à une vente réelle, verrouillage après échecs, PIN réservé aux caissiers, inscription, connexion par code entreprise et PIN, isolation entre organisations, unicité par organisation, quotas, rôles, cycle d'abonnement, paiement (simulateur et CinetPay simulé : montant falsifié, notification rejouée, fausse notification), renouvellement mensuel, déconnexion, refresh à usage unique, mot de passe oublié, suspension, nombre de requêtes SQL, ventes et synchronisation hors ligne, filtres et exports des ventes, catégories, sommiers, taux de capture.
 
 Frontends : `npm run build` (vérification TypeScript + build) et `npm run lint` dans chaque application.
 

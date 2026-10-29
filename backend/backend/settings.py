@@ -9,6 +9,10 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-only' if DEBUG else '')
 if not SECRET_KEY:
     raise ImproperlyConfigured("SECRET_KEY doit être défini en production (DEBUG=False).")
+if config('USE_HTTPS', default=False, cast=bool) and (len(SECRET_KEY) < 40 or 'local-dev-only' in SECRET_KEY
+                                                     or SECRET_KEY.startswith('django-insecure')):
+    raise ImproperlyConfigured("SECRET_KEY d'exemple ou trop courte : générez une clé propre à la production "
+                               "(python -c \"import secrets; print(secrets.token_urlsafe(50))\").")
 
 # Chemin de l'admin plateforme : à personnaliser en production (ex. 'gestion-x7k2/')
 ADMIN_URL = config('ADMIN_URL', default='admin/')
@@ -115,6 +119,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
         'tenants.permissions.HasTenant',
         'tenants.permissions.SubscriptionActive',
+        # + accès par rôle déclaré sur chaque vue (roles_lecture / roles_ecriture / roles_actions)
+        'tenants.permissions.RoleAccess',
     ),
     'DEFAULT_PAGINATION_CLASS': 'backend.pagination.Pagination',
     'DEFAULT_FILTER_BACKENDS': ['rest_framework.filters.SearchFilter', 'rest_framework.filters.OrderingFilter'],
@@ -126,6 +132,10 @@ REST_FRAMEWORK = {
         'inscription': config('THROTTLE_INSCRIPTION', default='10/hour'),
     },
 }
+
+# Verrouillage d'un compte après trop d'échecs de connexion (protège notamment les PIN à 4 chiffres)
+LOGIN_MAX_ECHECS = config('LOGIN_MAX_ECHECS', default=8, cast=int)
+LOGIN_VERROU_MINUTES = config('LOGIN_VERROU_MINUTES', default=15, cast=int)
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=config('JWT_ACCESS_MINUTES', default=120, cast=int)),
@@ -161,7 +171,9 @@ SAAS_RAPPEL_JOURS = config('SAAS_RAPPEL_JOURS', default=7, cast=int)
 
 # Paiement en ligne : 'simulateur' (local, sans Internet) ou 'cinetpay'
 PAYMENT_PROVIDER = config('PAYMENT_PROVIDER', default='simulateur')
-PAYMENT_SIMULATEUR_AUTORISE = config('PAYMENT_SIMULATEUR_AUTORISE', default=DEBUG or PAYMENT_PROVIDER == 'simulateur', cast=bool)
+# Le simulateur encaisse sans argent réel : hors DEBUG il faut l'autoriser explicitement,
+# sinon un oubli de PAYMENT_PROVIDER en production offrirait des abonnements gratuits.
+PAYMENT_SIMULATEUR_AUTORISE = config('PAYMENT_SIMULATEUR_AUTORISE', default=DEBUG, cast=bool)
 CINETPAY_API_KEY = config('CINETPAY_API_KEY', default='')
 CINETPAY_SITE_ID = config('CINETPAY_SITE_ID', default='')
 PASSWORD_RESET_TIMEOUT = 2 * 3600

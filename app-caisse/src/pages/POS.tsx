@@ -28,6 +28,7 @@ export default function POS() {
     cartTotal, cartItemCount, activeCurrency, setActiveCurrency,
     currentUser, logout, isOnline, offlineQueue,
     passengerName, flightRef, destination, setPassenger, clearPassenger,
+    carteFidelite, setCarteFidelite,
     loadProducts,
   } = useCaisseStore();
 
@@ -272,6 +273,13 @@ export default function POS() {
           {/* Pied panier */}
           {cart.length > 0 && (
             <div style={{ padding: '14px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+              {carteFidelite && (
+                <div style={{ marginBottom: 8, padding: '7px 11px', background: 'var(--accent-dim)', borderRadius: 5, fontSize: 10.5, fontWeight: 600, color: 'var(--accent)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span>★ {carteFidelite.nom} · {carteFidelite.numero} — points crédités à l'encaissement</span>
+                  <button onClick={() => setCarteFidelite(null)} title="Retirer la carte" aria-label="Retirer la carte"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: 0, fontSize: 13, lineHeight: 1 }}>×</button>
+                </div>
+              )}
               {passengerName && (
                 <div style={{ marginBottom: 11, padding: '7px 11px', background: 'var(--c-info-dim)', borderRadius: 5, fontSize: 10.5, fontWeight: 600, color: 'var(--c-info)', border: '1px solid var(--c-info-bd)' }}>
                   ✈ {passengerName}{flightRef && ` · ${flightRef}`}{destination && ` → ${destination}`}
@@ -299,7 +307,8 @@ export default function POS() {
         </div>
       </div>
 
-      {showFid && <FidelitePage onClose={() => setShowFid(false)} />}
+      {showFid && <FidelitePage onClose={() => setShowFid(false)}
+        onCarteSelectionnee={c => { setCarteFidelite({ id: c.id, numero: c.numero, nom: `${c.prenom} ${c.nom}`.trim() }); setShowFid(false); }} />}
     </div>
   );
 }

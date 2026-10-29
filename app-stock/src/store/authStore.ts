@@ -20,6 +20,10 @@ interface AuthStore {
   checkAuth: () => Promise<void>;
 }
 
+// Le serveur applique déjà ces droits ; on évite simplement d'ouvrir une interface inutilisable.
+const ROLES_AUTORISES = ['admin', 'superviseur', 'stock_manager'];
+const REFUS_ROLE = "Accès refusé : l'application stock est réservée aux gestionnaires de stock, superviseurs et administrateurs.";
+
 export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
   loading: false,
@@ -31,6 +35,11 @@ export const useAuthStore = create<AuthStore>((set) => ({
     try {
       await authApi.login(username, password);
       const user = await authApi.me();
+      if (!ROLES_AUTORISES.includes(user.role)) {
+        authApi.logout();
+        set({ error: REFUS_ROLE, loading: false });
+        return false;
+      }
       set({ user, isAuthenticated: true, loading: false });
       return true;
     } catch (err: unknown) {
@@ -49,6 +58,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
     if (!authStorage.getAccess()) return;
     try {
       const user = await authApi.me();
+      if (!ROLES_AUTORISES.includes(user.role)) throw new Error(REFUS_ROLE);
       set({ user, isAuthenticated: true });
     } catch {
       authStorage.clear();

@@ -29,6 +29,10 @@ interface BackofficeStore {
   fetchTauxCapture: () => Promise<void>;
 }
 
+// Le serveur applique déjà ces droits ; on évite simplement d'ouvrir une interface inutilisable.
+const ROLES_AUTORISES = ['admin', 'superviseur'];
+const REFUS_ROLE = 'Accès refusé : le backoffice est réservé aux administrateurs et superviseurs.';
+
 export const useBackofficeStore = create<BackofficeStore>((set, get) => ({
   user: null,
   isAuthenticated: !!authStorage.getAccess(),
@@ -40,6 +44,11 @@ export const useBackofficeStore = create<BackofficeStore>((set, get) => ({
     try {
       await authApi.login(username, password);
       const user = await authApi.me();
+      if (!ROLES_AUTORISES.includes(user.role)) {
+        authApi.logout();
+        set({ authError: REFUS_ROLE, authLoading: false });
+        return false;
+      }
       set({ user, isAuthenticated: true, authLoading: false });
       return true;
     } catch (err: unknown) {
@@ -58,6 +67,7 @@ export const useBackofficeStore = create<BackofficeStore>((set, get) => ({
     if (!authStorage.getAccess()) return;
     try {
       const user = await authApi.me();
+      if (!ROLES_AUTORISES.includes(user.role)) throw new Error(REFUS_ROLE);
       set({ user, isAuthenticated: true });
     } catch {
       authStorage.clear();

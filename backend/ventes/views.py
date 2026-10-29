@@ -5,7 +5,10 @@ from django.db.models import Sum, Count, Avg, F
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from datetime import timedelta
+from django.db import transaction
+from rest_framework.exceptions import ValidationError
 from tenants.mixins import TenantScopedViewSetMixin
+from tenants.permissions import GESTION, TOUS, CAISSIER
 from .models import Vente, DonneesPassagers
 from .serializers import (VenteSerializer, VenteListSerializer, VenteCreateSerializer,
                            DonneesPassagersSerializer)
@@ -15,9 +18,19 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     search_fields = ['numero_ticket', 'caissier__first_name', 'caissier__last_name',
                      'passager_nom', 'vol_reference', 'destination']
     ordering_fields = ['date_locale', 'total', 'caissier__last_name']
+    # Une vente enregistrée ne se modifie ni ne se supprime : on l'annule (trace conservée).
+    http_method_names = ['get', 'post', 'head', 'options']
+    # Lecture : gestion, et caissiers limités à leurs propres ventes (cf. get_queryset).
+    roles_lecture = GESTION + (CAISSIER,)
+    roles_ecriture = TOUS
+    roles_actions = {
+        'dashboard': GESTION, 'taux_capture': GESTION, 'caisses': GESTION, 'annuler': GESTION,
+    }
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.request.user.role == CAISSIER:
+            qs = qs.filter(caissier=self.request.user)
         if self.action != 'list':
             return qs
         p = self.request.query_params
@@ -49,6 +62,55 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         super().perform_create(serializer, caissier=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def annuler(self, request, pk=None):
+        """
+        Annule une vente : remet les articles en stock, rétablit les sommiers débités
+        et retire les points de fidélité gagnés. La vente reste visible, au statut « annulée ».
+        """
+        from stock.models import MouvementStock, Sommier
+        from django.db.models import F
+        vente = self.get_queryset().select_for_update(of=('self',)).get(pk=self.get_object().pk)
+        if vente.statut == 'annulee':
+            raise ValidationError("Cette vente est déjà annulée.")
+        motif = (request.data.get('motif') or '').strip()[:200]
+        if not motif:
+            raise ValidationError({'motif': "Indiquez le motif de l'annulation."})
+
+        sorties = MouvementStock.objects.filter(organisation=self.tenant, reference=vente.numero_ticket,
+                                                type_mouvement='sortie')
+        for m in sorties:
+            # Retour en stock sans toucher aux entrées du sommier, puis sortie du sommier annulée
+            MouvementStock.objects.create(
+                organisation=self.tenant, produit=m.produit, type_mouvement='ajustement',
+                quantite=m.quantite, motif=f"Annulation vente {vente.numero_ticket} : {motif}"[:255],
+                reference=vente.numero_ticket, utilisateur=request.user,
+            )
+            if m.sommier_id:
+                Sommier.objects.filter(pk=m.sommier_id).update(quantite_sortie=F('quantite_sortie') - m.quantite)
+
+        carte = vente.carte_fidelite
+        if carte:
+            from fidelite.models import MouvementFidelite
+            gagnes = sum(float(x.points) for x in MouvementFidelite.objects.filter(
+                carte=carte, type_mouvement='gain', reference_vente=vente.numero_ticket))
+            if gagnes:
+                carte = type(carte).objects.select_for_update().get(pk=carte.pk)
+                avant = float(carte.points)
+                carte.points = round(max(0.0, avant - gagnes), 2)
+                carte.update_niveau()
+                carte.save()
+                MouvementFidelite.objects.create(
+                    carte=carte, type_mouvement='ajustement', points=-(avant - float(carte.points)),
+                    solde_avant=avant, solde_apres=carte.points, reference_vente=vente.numero_ticket,
+                    note=f"Annulation de la vente : {motif}"[:200], operateur=request.user,
+                )
+
+        vente.statut = 'annulee'
+        vente.save(update_fields=['statut'])
+        return Response(VenteSerializer(vente, context=self.get_serializer_context()).data)
 
     @action(detail=False, methods=['post'])
     def sync_offline(self, request):
@@ -162,6 +224,7 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 class DonneesPassagersViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = DonneesPassagers.objects.all()
     serializer_class = DonneesPassagersSerializer
+    roles_lecture = roles_ecriture = GESTION
 
     def perform_create(self, serializer):
         super().perform_create(serializer, saisie_par=self.request.user)

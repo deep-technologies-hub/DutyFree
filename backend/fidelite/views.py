@@ -5,7 +5,9 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from configuration.models import Configuration
+from rest_framework.exceptions import ValidationError
 from tenants.mixins import TenantScopedViewSetMixin
+from tenants.permissions import CAISSIER, GESTION
 from .models import CarteFidelite, MouvementFidelite, generer_numero_carte
 from .serializers import CarteFideliteSerializer, CarteFideliteListSerializer
 
@@ -14,6 +16,12 @@ class CarteFideliteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = CarteFidelite.objects.all()
     search_fields = ['numero', 'nom', 'prenom', 'email', 'telephone']
     ordering_fields = ['points', 'niveau', 'date_inscription', 'nom']
+    # Fichier clients et ajustements : gestion. En caisse : recherche, inscription, gain sur une vente.
+    roles_lecture = roles_ecriture = GESTION
+    roles_actions = {
+        'par_numero': GESTION + (CAISSIER,), 'create': GESTION + (CAISSIER,),
+        'ajouter_points': GESTION + (CAISSIER,),
+    }
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -42,10 +50,18 @@ class CarteFideliteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     def ajouter_points(self, request, pk=None):
         carte = self._carte_verrouillee()
         cfg = Configuration.get(self.tenant)
-        montant_xof = float(request.data.get('montant_xof', 0))
+        reference = str(request.data.get('reference', '')).strip()
+        if request.user.role == CAISSIER or reference:
+            # Les points se gagnent sur une vente réelle, une seule fois : le montant est celui
+            # de la vente enregistrée, pas celui envoyé par le poste de caisse.
+            montant_xof = self._montant_vente(reference)
+        else:
+            try:
+                montant_xof = float(request.data.get('montant_xof', 0))
+            except (TypeError, ValueError):
+                montant_xof = 0
         if montant_xof <= 0:
             return Response({'error': 'Montant invalide'}, status=400)
-        reference = request.data.get('reference', '')
 
         points_gagnes = round(montant_xof * float(cfg.points_par_xof), 2)
         solde_avant = float(carte.points)
@@ -66,12 +82,27 @@ class CarteFideliteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         )
         return Response({'points_gagnes': points_gagnes, 'nouveau_solde': float(carte.points), 'niveau': carte.niveau})
 
+    def _montant_vente(self, reference):
+        from ventes.models import Vente
+        if not reference:
+            raise ValidationError({'reference': 'Numéro de ticket requis pour créditer des points.'})
+        vente = Vente.objects.filter(organisation=self.tenant, numero_ticket=reference, statut='payee').first()
+        if vente is None:
+            raise ValidationError({'reference': "Vente introuvable : elle n'est peut-être pas encore synchronisée."})
+        if MouvementFidelite.objects.filter(carte__organisation=self.tenant, type_mouvement='gain',
+                                            reference_vente=reference).exists():
+            raise ValidationError({'reference': 'Des points ont déjà été crédités pour cette vente.'})
+        return float(sum(p.montant_xof - p.monnaie_rendue for p in vente.paiements.all()))
+
     @action(detail=True, methods=['post'], url_path='utiliser_points')
     @transaction.atomic
     def utiliser_points(self, request, pk=None):
         carte = self._carte_verrouillee()
         cfg = Configuration.get(self.tenant)
-        points_a_utiliser = float(request.data.get('points', 0))
+        try:
+            points_a_utiliser = float(request.data.get('points', 0))
+        except (TypeError, ValueError):
+            points_a_utiliser = 0
 
         if points_a_utiliser <= 0:
             return Response({'error': 'Nombre de points invalide'}, status=400)

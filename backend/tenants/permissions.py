@@ -49,4 +49,30 @@ class IsTenantAdminOrReadOnly(IsTenantAdmin):
         return request.method in permissions.SAFE_METHODS or super().has_permission(request, view)
 
 
-TENANT_PERMISSIONS = [permissions.IsAuthenticated, HasTenant, SubscriptionActive]
+ADMIN, SUPERVISEUR, STOCK, CAISSIER = 'admin', 'superviseur', 'stock_manager', 'caissier'
+TOUS = (ADMIN, SUPERVISEUR, STOCK, CAISSIER)
+GESTION = (ADMIN, SUPERVISEUR)
+GESTION_STOCK = (ADMIN, SUPERVISEUR, STOCK)
+
+
+class RoleAccess(permissions.BasePermission):
+    """
+    Accès par rôle, déclaré sur la vue :
+      roles_lecture  : rôles autorisés en lecture (GET)            — défaut : tous
+      roles_ecriture : rôles autorisés en écriture (POST, PATCH…)  — défaut : tous
+      roles_actions  : {'nom_action': rôles} prioritaire sur les deux précédents
+    Une vue qui ne déclare rien garde ses propres contrôles.
+    """
+    message = "Votre rôle ne permet pas cette action."
+
+    def has_permission(self, request, view):
+        role = getattr(request.user, 'role', None)
+        action = getattr(view, 'action', None)
+        par_action = getattr(view, 'roles_actions', {})
+        if action in par_action:
+            return role in par_action[action]
+        attr = 'roles_lecture' if request.method in permissions.SAFE_METHODS else 'roles_ecriture'
+        return role in getattr(view, attr, TOUS)
+
+
+TENANT_PERMISSIONS = [permissions.IsAuthenticated, HasTenant, SubscriptionActive, RoleAccess]
