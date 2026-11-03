@@ -33,7 +33,6 @@ export interface Product {
   sommier?: string;
   photo?: string;
   description?: string;
-  taxRate: number;
   status: StockStatus;
   lastUpdated: string;
 }

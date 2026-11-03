@@ -174,15 +174,6 @@ export const useCaisseStore = create<CaisseStore>()(
       clearCart: () => set({ cart: [], passengerName: '', flightRef: '', destination: '', carteFidelite: null }),
       cartTotal: () => {
         const { cart, activeCurrency, rates } = get();
-        cart.forEach((item, index) => {
-          console.log(`DEBUG cartTotal - item ${index}:`, {
-            id: item.product.id,
-            name: item.product.nom || item.product.name,
-            unitPrice: item.unitPrice,
-            currency: item.currency,
-            total: item.total
-          });
-        });
         return cart.reduce((sum, item) =>
           sum + fromXOF(toXOF(Number(item.total), item.currency, rates), activeCurrency, rates), 0);
       },
