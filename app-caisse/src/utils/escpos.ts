@@ -93,7 +93,7 @@ export class EscPosPrinter {
 interface TicketSale {
   numero_ticket?: string;
   createdAt: string;
-  items: Array<{ name: string; qty: number; price: number; currency: string }>;
+  items: Array<{ name: string; qty: number; price: number; currency: string; discount: number; total: number }>;
   total: number;
   currency: string;
   paiements?: Array<{ methode: string; montant: number; devise: string }>;
@@ -122,15 +122,19 @@ export function buildTicketHtml(sale: TicketSale, cfg?: { nom?: string; adresse?
     <div>Ticket : <b>${sale.numero_ticket || 'N/A'}</b></div>
     <div>Date : ${dateStr}</div>
     ${sale.passengerName ? `<div>Passager : ${esc(sale.passengerName)}</div>` : ''}
-    ${sale.flightRef ? `<div>Vol : ${esc(sale.flightRef)}${sale.destination ? ' → ' + esc(sale.destination) : ''}</div>` : ''}
+    ${sale.flightRef ? `<div>Vol : ${esc(sale.flightRef)}</div>` : ''}
+    ${sale.destination ? `<div>Destination : ${esc(sale.destination)}</div>` : ''}
     <hr>`;
 
   sale.items.forEach(item => {
     html += `<div>${esc(item.name.substring(0, 32))}</div>`;
-    html += `<div class="row"><span>  ${item.qty} x ${fmt(item.price)} ${item.currency}</span><span class="b">${fmt(item.qty * item.price)}</span></div>`;
+    const remise = item.discount > 0 ? ` −${item.discount}%` : '';
+    html += `<div class="row"><span>  ${item.qty} x ${fmt(item.price)} ${item.currency}${remise}</span><span class="b">${fmt(item.total)}</span></div>`;
   });
 
   html += `<hr><div class="row b big"><span>TOTAL</span><span>${fmt(sale.total)} ${sale.currency}</span></div>`;
+  html += `<div>TVA : ${fmt(0)} ${sale.currency} (exonérée)</div>`;
+  html += `<div class="c b">Vente hors-taxes – Duty Free</div>`;
 
   if (sale.paiements?.length) {
     html += `<hr>`;

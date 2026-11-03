@@ -254,7 +254,7 @@ export default function Ventes() {
 
             <div style={{ padding: '20px 24px', background: '#FAFAFA', borderTop: '2px dashed var(--border-3)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-2)' }}>TOTAL TTC</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-2)' }}>TOTAL HT</span>
                 <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--accent)', fontFamily: 'IBM Plex Mono, monospace' }}>
                   {fmt(Number(selectedTicket.total))} <span style={{ fontSize: 16 }}>{selectedTicket.devise}</span>
                 </span>
