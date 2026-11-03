@@ -1,11 +1,14 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
+from configuration.models import Configuration
 from stock.models import Categorie
 from tenants.tests import client_for, make_org, produit
+from ventes.models import Vente
 
 
 class FiltresVentesEtExportsTests(TestCase):
@@ -81,6 +84,59 @@ class FiltresVentesEtExportsTests(TestCase):
         # Une autre organisation ne peut ni lire ni modifier ces données
         self.assertEqual(client_for(self.admin_b).patch(f"/api/ventes/passagers/{ligne['id']}/",
                                                         {'nombre_passagers': 1}, format='json').status_code, 404)
+
+
+class MontantsRecalculesTests(TestCase):
+    """Les montants d'une vente viennent du catalogue, jamais de la caisse."""
+
+    def setUp(self):
+        cache.clear()
+        self.a, self.admin_a = make_org('alpha')
+        self.p = produit(self.a, 'A-1', stock=100, prix_eur=10)
+        self.c = client_for(self.admin_a)
+        Configuration.objects.filter(organisation=self.a).update(taux_eur_xof=650)
+
+    def payload(self, ticket='T-1', devise='XOF'):
+        return {
+            'numero_ticket': ticket, 'numero_caisse': 'C1', 'devise': devise,
+            'sous_total': 1, 'remise_totale': 0, 'total': 1, 'date_locale': timezone.now().isoformat(),
+            'lignes': [{'produit': self.p.id, 'quantite': 2, 'prix_unitaire': 1, 'total': 2}],
+            'paiements': [{'methode': 'especes', 'montant': 2, 'montant_xof': 2}],
+        }
+
+    def test_prix_falsifie_enregistre_au_vrai_prix(self):
+        r = self.c.post('/api/ventes/', self.payload(), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        vente = Vente.objects.get(numero_ticket='T-1')
+        ligne = vente.lignes.get()
+        self.assertEqual((ligne.prix_unitaire, ligne.total), (Decimal('1000'), Decimal('2000')))
+        self.assertEqual((vente.sous_total, vente.remise_totale, vente.total),
+                         (Decimal('2000'), Decimal('0'), Decimal('2000')))
+        # La réponse renvoie les montants recalculés, lignes comprises
+        self.assertEqual(Decimal(r.data['total']), Decimal('2000'))
+        self.assertEqual(Decimal(r.data['lignes'][0]['prix_unitaire']), Decimal('1000'))
+        self.assertEqual(r.data['lignes'][0]['produit_nom'], 'Produit A-1')
+
+    def test_remise_et_conversion_dans_la_devise_de_la_vente(self):
+        # 2 × 10 EUR à −10 % = 18 EUR, vente en XOF au taux configuré de 650
+        r = self.c.post('/api/ventes/', self.payload() | {
+            'lignes': [{'produit': self.p.id, 'quantite': 2, 'devise': 'EUR', 'remise': 10,
+                        'prix_unitaire': 1, 'total': 1}]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        vente = Vente.objects.get(numero_ticket='T-1')
+        self.assertEqual(vente.lignes.get().total, Decimal('18'))
+        self.assertEqual((vente.sous_total, vente.remise_totale, vente.total),
+                         (Decimal('13000'), Decimal('1300'), Decimal('11700')))
+
+    def test_sync_offline_recalcule_aussi(self):
+        self.c.post('/api/ventes/sync_offline/', {'ventes': [self.payload('OFF-1')]}, format='json')
+        self.assertEqual(Vente.objects.get(numero_ticket='OFF-1').total, Decimal('2000'))
+
+    def test_prix_absent_dans_la_devise_refuse(self):
+        r = self.c.post('/api/ventes/', self.payload(devise='USD') | {
+            'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(Vente.objects.exists())
 
 
 class CategoriesTests(TestCase):

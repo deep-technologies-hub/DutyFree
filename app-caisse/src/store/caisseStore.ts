@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { stockApi, ventesApi, authApi, authStorage } from '../api';
-import type { Produit, VentePayload } from '../api';
+import type { Produit, VentePayload, VenteResponse } from '../api';
 import type { CartItem, Sale, User, Currency, Payment } from '../types';
 
 // Numéro de ticket : T<AAMMJJ>-<appareil>-<séquence du jour>, ex. T261029-K7QZ-0001.
@@ -50,6 +50,25 @@ const priceInCurrency = (p: Produit, currency: Currency) => {
   return Number(p.prix_xof) || 0;
 };
 
+/** Vente locale complétée avec les montants enregistrés par le serveur. */
+const saleFromApi = (v: VenteResponse, local: Sale): Sale => ({
+  ...local,
+  items: v.lignes.map(l => ({
+    product: local.items.find(i => String(i.product.id) === String(l.produit))?.product
+      ?? { id: l.produit, code: '', nom: l.produit_nom, stock: 0 },
+    quantity: l.quantite,
+    unitPrice: Number(l.prix_unitaire),
+    currency: l.devise as Currency,
+    discount: Number(l.remise),
+    total: Number(l.total),
+  })),
+  subtotal: Number(v.sous_total),
+  discountTotal: Number(v.remise_totale),
+  total: Number(v.total),
+  currency: v.devise as Currency,
+  synced: true,
+});
+
 export interface CarteAssociee { id: number; numero: string; nom: string }
 
 interface CaisseStore {
@@ -77,7 +96,7 @@ interface CaisseStore {
   setCarteFidelite: (carte: CarteAssociee | null) => void;
   sales: Sale[];
   offlineQueue: VentePayload[];
-  completeSale: (payments: Payment[]) => Sale;
+  completeSale: (payments: Payment[]) => Promise<Sale>;
   syncOfflineQueue: () => Promise<void>;
   login: (user: User) => void;
   loginWithApi: (username: string, password: string) => Promise<boolean>;
@@ -179,7 +198,7 @@ export const useCaisseStore = create<CaisseStore>()(
       sales: [],
       offlineQueue: [],
 
-      completeSale: (payments) => {
+      completeSale: async (payments) => {
         const { cart, currentUser, activeCurrency, passengerName, flightRef, destination, carteFidelite, isOnline, rates } = get();
         const now = new Date().toISOString();
         const total = get().cartTotal();
@@ -238,19 +257,22 @@ export const useCaisseStore = create<CaisseStore>()(
           })),
         };
 
+        // En ligne, le ticket reprend les montants recalculés par le serveur ;
+        // hors ligne, il garde le calcul local jusqu'à la synchronisation.
+        let saved = sale;
         if (isOnline) {
-          // Envoyer à l'API
-          ventesApi.create(payload).catch(() => {
-            // Si échec, mettre en queue
+          try {
+            saved = saleFromApi(await ventesApi.create(payload), sale);
+          } catch {
             set(s => ({ offlineQueue: [...s.offlineQueue, payload] }));
-          });
+          }
         } else {
           set(s => ({ offlineQueue: [...s.offlineQueue, payload] }));
         }
 
-        set(s => ({ sales: [sale, ...s.sales] }));
+        set(s => ({ sales: [saved, ...s.sales] }));
         get().clearCart();
-        return sale;
+        return saved;
       },
 
       syncOfflineQueue: async () => {

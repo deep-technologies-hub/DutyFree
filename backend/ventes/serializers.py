@@ -1,7 +1,9 @@
 from django.db import transaction
 from rest_framework import serializers
 from tenants.mixins import TenantModelSerializer
-from .models import Vente, LigneVente, Paiement, DonneesPassagers
+from .models import Vente, LigneVente, Paiement, DonneesPassagers, arrondir
+
+PRIX_PAR_DEVISE = {'XOF': 'prix_xof', 'EUR': 'prix_eur', 'USD': 'prix_usd'}
 
 
 # ── Serializers de lecture ────────────────────────────────────────────
@@ -26,12 +28,21 @@ class LigneVenteSerializer(TenantModelSerializer):
 class LigneVenteWriteSerializer(TenantModelSerializer):
     """Utilisé à la création — le champ 'vente' est injecté dans create()"""
     quantite = serializers.IntegerField(min_value=1, max_value=10000)
-    prix_unitaire = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0)
     remise = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100, default=0)
 
     class Meta:
         model = LigneVente
         exclude = ['vente']   # ← clé du fix
+        # Montants fixés par le serveur à partir du catalogue : ceux du client sont ignorés.
+        read_only_fields = ['prix_unitaire', 'total']
+
+    def validate(self, attrs):
+        produit, devise = attrs['produit'], attrs.get('devise', 'XOF')
+        attrs['prix_unitaire'] = getattr(produit, PRIX_PAR_DEVISE[devise])
+        if not attrs['prix_unitaire']:
+            raise serializers.ValidationError(
+                {'devise': f"Prix en {devise} non renseigné pour le produit {produit.code}."})
+        return attrs
 
 
 class PaiementWriteSerializer(TenantModelSerializer):
@@ -55,25 +66,34 @@ class VenteCreateSerializer(TenantModelSerializer):
         model = Vente
         fields = '__all__'
         # Une vente arrive toujours « payée » : l'annulation passe par l'action dédiée.
-        read_only_fields = ['caissier', 'statut']
+        # Les montants sont recalculés par le serveur : ceux envoyés par la caisse sont ignorés.
+        read_only_fields = ['caissier', 'statut', 'sous_total', 'remise_totale', 'total']
 
     def validate(self, attrs):
         if not attrs.get('lignes'):
             raise serializers.ValidationError({'lignes': 'Une vente doit contenir au moins un article.'})
-        for champ in ('sous_total', 'total', 'remise_totale'):
-            if attrs.get(champ, 0) < 0:
-                raise serializers.ValidationError({champ: 'Montant négatif refusé.'})
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
+        from configuration.models import Configuration
         lignes_data = validated_data.pop('lignes')
         paiements_data = validated_data.pop('paiements')
+        cfg = Configuration.get(validated_data['organisation'])
 
-        vente = Vente.objects.create(**validated_data)
+        # Totaux de la vente = lignes converties dans la devise de la vente (via le XOF)
+        lignes = [LigneVente(**l) for l in lignes_data]
+        taux_vente = cfg.taux_vers_xof(validated_data.get('devise', 'XOF'))
+        en_devise_vente = lambda montant, devise: montant * cfg.taux_vers_xof(devise) / taux_vente
+        sous_total = arrondir(sum(en_devise_vente(l.montant_brut, l.devise) for l in lignes))
+        total = arrondir(sum(en_devise_vente(l.calculer_total(), l.devise) for l in lignes))
 
-        for l in lignes_data:
-            LigneVente.objects.create(vente=vente, **l)
+        vente = Vente.objects.create(**validated_data, sous_total=sous_total,
+                                     remise_totale=sous_total - total, total=total)
+
+        for ligne in lignes:
+            ligne.vente = vente
+            ligne.save()
 
         for p in paiements_data:
             Paiement.objects.create(vente=vente, **p)
@@ -93,18 +113,11 @@ class VenteCreateSerializer(TenantModelSerializer):
 
         # Gérer la fidélité
         if vente.carte_fidelite:
-            from configuration.models import Configuration
             from fidelite.models import MouvementFidelite
-            cfg = Configuration.get(vente.organisation)
-            
+
             # Calcul des points (basé sur le total en XOF)
-            # On suppose que si la devise n'est pas XOF, on convertit pour le calcul des points
-            montant_xof = vente.total
-            if vente.devise == 'EUR':
-                montant_xof = vente.total * cfg.taux_eur_xof
-            elif vente.devise == 'USD':
-                montant_xof = vente.total * cfg.taux_usd_xof
-            
+            montant_xof = vente.total * taux_vente
+
             points_gagnes = round(float(montant_xof) * float(cfg.points_par_xof), 2)
             
             if points_gagnes > 0:
@@ -129,6 +142,10 @@ class VenteCreateSerializer(TenantModelSerializer):
         transaction.on_commit(lambda: broadcast_new_sale(
             vente.organisation_id, vente.numero_caisse, vente.total, len(lignes_data)))
         return vente
+
+    def to_representation(self, instance):
+        # La caisse imprime le ticket à partir des montants enregistrés par le serveur
+        return VenteSerializer(instance, context=self.context).data
 
 
 # ── Serializers de lecture complète ───────────────────────────────────

@@ -1,9 +1,14 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import models
 from django.conf import settings
 from stock.models import Produit
 from tenants.models import TenantModel
+
+
+def arrondir(montant):
+    return Decimal(montant).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
 
 class Vente(TenantModel):
     DEVISES = [('XOF','XOF'), ('EUR','EUR'), ('USD','USD')]
@@ -59,8 +64,17 @@ class LigneVente(models.Model):
     class Meta:
         verbose_name = "Ligne de vente"
 
+    @property
+    def montant_brut(self):
+        """Montant avant remise, dans la devise de la ligne."""
+        return self.quantite * Decimal(self.prix_unitaire)
+
+    def calculer_total(self):
+        self.total = arrondir(self.montant_brut * (1 - Decimal(self.remise) / 100))
+        return self.total
+
     def save(self, *args, **kwargs):
-        self.total = self.quantite * Decimal(self.prix_unitaire) * (1 - Decimal(self.remise) / 100)
+        self.calculer_total()
         super().save(*args, **kwargs)
 
 

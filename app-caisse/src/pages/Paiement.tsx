@@ -47,7 +47,7 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
   const handleConfirm = () => {
     if (!isPaid) return;
     setDone(true);
-    setTimeout(() => { const sale = completeSale(payments); onComplete(sale); }, 800);
+    setTimeout(async () => { const sale = await completeSale(payments); onComplete(sale); }, 800);
   };
 
   const quickAmounts = currency === 'XOF' ? [5000, 10000, 25000, 50000, 100000] : [10, 20, 50, 100, 200];

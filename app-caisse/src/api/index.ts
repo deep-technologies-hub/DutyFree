@@ -380,9 +380,23 @@ export interface PaiementPayload {
   taux_change: number;
 }
 
+/** Vente telle qu'enregistrée : montants recalculés par le serveur (décimaux sérialisés en chaînes). */
 export interface VenteResponse {
   id: number;
   numero_ticket: string;
+  devise: string;
+  sous_total: string;
+  remise_totale: string;
+  total: string;
+  lignes: {
+    produit: number;
+    produit_nom: string;
+    quantite: number;
+    prix_unitaire: string;
+    devise: string;
+    remise: string;
+    total: string;
+  }[];
 }
 
 export interface VenteListItem {
