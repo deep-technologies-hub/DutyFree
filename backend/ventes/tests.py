@@ -132,6 +132,14 @@ class MontantsRecalculesTests(TestCase):
         self.c.post('/api/ventes/sync_offline/', {'ventes': [self.payload('OFF-1')]}, format='json')
         self.assertEqual(Vente.objects.get(numero_ticket='OFF-1').total, Decimal('2000'))
 
+    def test_dashboard_ca_par_categorie_converti_en_xof(self):
+        # 2 × 10 EUR (13 000 XOF au taux de 650) + 1 × 1 000 XOF
+        self.c.post('/api/ventes/', self.payload() | {'lignes': [
+            {'produit': self.p.id, 'quantite': 2, 'devise': 'EUR'},
+            {'produit': self.p.id, 'quantite': 1, 'devise': 'XOF'}]}, format='json')
+        cat = self.c.get('/api/ventes/dashboard/').data['ca_by_categorie'][0]
+        self.assertEqual(Decimal(cat['ca']), Decimal('14000'))
+
     def test_prix_absent_dans_la_devise_refuse(self):
         r = self.c.post('/api/ventes/', self.payload(devise='USD') | {
             'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}, format='json')

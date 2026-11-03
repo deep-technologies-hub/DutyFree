@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useCaisseStore } from '../store/caisseStore';
+import { useCaisseStore, toXOF } from '../store/caisseStore';
 import { Printer, ShoppingBag, Check, RotateCcw, Usb } from 'lucide-react';
 import type { Sale } from '../types';
 import { escposPrinter, buildTicketHtml } from '../utils/escpos';
@@ -12,7 +12,7 @@ const fmt = (n: number, c: string) => {
 };
 
 export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => void }) {
-  const { currentUser } = useCaisseStore();
+  const { currentUser, rates } = useCaisseStore();
   const boutique = useBoutique();
   const nomBoutique = boutique?.nom_boutique || 'DUTY FREE';
   const printRef = useRef<HTMLDivElement>(null);
@@ -24,7 +24,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
     const html = buildTicketHtml({
       numero_ticket: sale.ticketNumber,
       createdAt: sale.createdAt,
-      items: sale.items.map(i => ({ name: i.product.name ?? i.product.nom ?? '', qty: i.quantity, price: i.unitPrice, currency: sale.currency })),
+      items: sale.items.map(i => ({ name: i.product.name ?? i.product.nom ?? '', qty: i.quantity, price: i.unitPrice, currency: i.currency })),
       total: sale.total,
       currency: sale.currency,
       paiements: sale.payments.map(p => ({ methode: p.method, montant: p.amount, devise: p.currency })),
@@ -80,7 +80,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
 
   const totalXOF = sale.payments.reduce((s, p) => s + p.amountXOF, 0);
   const totalPaid = sale.payments.reduce((s, p) => s + p.amount, 0);
-  const changeXOF = Math.max(0, totalXOF - sale.total);
+  const changeXOF = Math.max(0, totalXOF - toXOF(sale.total, sale.currency, rates));
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 24px', fontFamily: 'IBM Plex Sans, sans-serif' }}>

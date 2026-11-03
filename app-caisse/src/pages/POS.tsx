@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useCaisseStore } from '../store/caisseStore';
+import { useCaisseStore, toXOF } from '../store/caisseStore';
 import { Search, X, Plus, Minus, ChevronRight, Wifi, WifiOff, User, Scan, ShoppingCart, LogOut, Star } from 'lucide-react';
 import type { Currency } from '../types';
 import { ProductImage } from '../components/ProductImage';
@@ -29,7 +29,7 @@ export default function POS() {
     currentUser, logout, isOnline, offlineQueue,
     passengerName, flightRef, destination, setPassenger, clearPassenger,
     carteFidelite, setCarteFidelite,
-    loadProducts,
+    loadProducts, rates,
   } = useCaisseStore();
 
   // Generate dynamic categories from products
@@ -99,7 +99,7 @@ export default function POS() {
 
         {/* Sélecteur devise */}
         <div style={{ display: 'flex', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, overflow: 'hidden' }}>
-          {CURS.map(c => (
+          {CURS.filter(c => rates || c === 'XOF').map(c => (
             <button key={c} onClick={() => setActiveCurrency(c)}
               style={{ padding: '5px 14px', border: 'none', background: c === activeCurrency ? 'var(--accent)' : 'transparent', color: c === activeCurrency ? '#fff' : 'var(--text-3)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'IBM Plex Mono,monospace', transition: 'all 0.1s' }}>
               {c}
@@ -293,7 +293,7 @@ export default function POS() {
                   </div>
                   {activeCurrency !== 'XOF' && (
                     <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3, fontFamily: 'IBM Plex Mono,monospace' }}>
-                      ≈ {new Intl.NumberFormat('fr-FR').format(Math.round(activeCurrency === 'EUR' ? total * 655.957 : total * 607.5))} XOF
+                      ≈ {new Intl.NumberFormat('fr-FR').format(Math.round(toXOF(total, activeCurrency, rates)))} XOF
                     </div>
                   )}
                 </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useCaisseStore } from '../store/caisseStore';
+import { useCaisseStore, toXOF as toXOFAuTaux, fromXOF as fromXOFAuTaux } from '../store/caisseStore';
 import { ArrowLeft, CreditCard, Banknote, Smartphone, Check, Plus, X } from 'lucide-react';
 import type { Currency, PaymentMethod, Payment, Sale } from '../types';
 
@@ -26,8 +26,10 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
   const [amount, setAmount] = useState('');
   const [done, setDone] = useState(false);
 
-  const toXOF = (v: number, c: Currency) => c === 'EUR' ? v * rates.EUR_XOF : c === 'USD' ? v * rates.USD_XOF : v;
-  const fromXOF = (v: number, c: Currency) => c === 'EUR' ? v / rates.EUR_XOF : c === 'USD' ? v / rates.USD_XOF : v;
+  const toXOF = (v: number, c: Currency) => toXOFAuTaux(v, c, rates);
+  const fromXOF = (v: number, c: Currency) => fromXOFAuTaux(v, c, rates);
+  // Sans taux configurés connus, seul le XOF peut être encaissé
+  const devises = rates ? CURRENCIES : ['XOF' as Currency];
 
   const paidXOF = payments.reduce((s, p) => s + p.amountXOF, 0);
   const totalXOF = toXOF(total, activeCurrency);
@@ -113,14 +115,14 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
           <div style={{ marginBottom: 18 }}>
             <label className="label-xs" style={{ marginBottom: 8 }}>Devise de paiement</label>
             <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-              {CURRENCIES.map(c => (
+              {devises.map(c => (
                 <button key={c} onClick={() => { setCurrency(c); setAmount(''); }}
                   style={{ flex: 1, padding: '9px', border: 'none', background: currency === c ? 'var(--accent)' : 'transparent', color: currency === c ? 'var(--bg)' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'IBM Plex Mono, monospace', transition: 'all 0.12s' }}>
                   {c}
                 </button>
               ))}
             </div>
-            {currency !== 'XOF' && (
+            {currency !== 'XOF' && rates && (
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, textAlign: 'right', fontFamily: 'IBM Plex Mono, monospace' }}>
                 1 {currency} = {currency === 'EUR' ? rates.EUR_XOF.toFixed(3) : rates.USD_XOF.toFixed(2)} XOF
               </div>

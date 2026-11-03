@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { stockApi, ventesApi, authApi, authStorage } from '../api';
+import { api, stockApi, ventesApi, authApi, authStorage } from '../api';
 import type { Produit, VentePayload, VenteResponse } from '../api';
-import type { CartItem, Sale, User, Currency, Payment } from '../types';
+import type { CartItem, Sale, User, Currency, Payment, ExchangeRates } from '../types';
 
 // Numéro de ticket : T<AAMMJJ>-<appareil>-<séquence du jour>, ex. T261029-K7QZ-0001.
 // Généré hors ligne, il doit rester unique entre caisses : le serveur rejette les doublons
@@ -32,17 +32,14 @@ const nextTicketNumber = () => {
   return `T${jour}-${deviceId}-${String(seq).padStart(4, '0')}`;
 };
 
-// Exchange rates from API
-const exchangeRates = {
-  EUR_XOF: 655.957,
-  USD_XOF: 607.50,
-};
+// Taux de change configurés par la boutique (/configuration/) ; null tant qu'ils n'ont jamais été chargés.
+export type Rates = Pick<ExchangeRates, 'EUR_XOF' | 'USD_XOF'>;
 
-const toXOF = (amount: number, currency: Currency) => {
-  if (currency === 'EUR') return amount * exchangeRates.EUR_XOF;
-  if (currency === 'USD') return amount * exchangeRates.USD_XOF;
-  return amount;
-};
+const taux = (currency: Currency, rates: Rates | null) =>
+  currency === 'XOF' ? 1 : rates ? rates[currency === 'EUR' ? 'EUR_XOF' : 'USD_XOF'] : NaN;
+
+export const toXOF = (amount: number, currency: Currency, rates: Rates | null) => amount * taux(currency, rates);
+export const fromXOF = (amount: number, currency: Currency, rates: Rates | null) => amount / taux(currency, rates);
 
 const priceInCurrency = (p: Produit, currency: Currency) => {
   if (currency === 'EUR') return Number(p.prix_eur) || 0;
@@ -77,7 +74,8 @@ interface CaisseStore {
   setOnline: (v: boolean) => void;
   activeCurrency: Currency;
   setActiveCurrency: (c: Currency) => void;
-  rates: typeof exchangeRates;
+  rates: Rates | null;
+  loadRates: () => Promise<void>;
   cart: CartItem[];
   products: Produit[];
   productsLoaded: boolean;
@@ -113,7 +111,13 @@ export const useCaisseStore = create<CaisseStore>()(
       setOnline: (v) => set({ isOnline: v }),
       activeCurrency: 'XOF',
       setActiveCurrency: (c) => set({ activeCurrency: c }),
-      rates: exchangeRates,
+      rates: null,
+      loadRates: async () => {
+        try {
+          const cfg = await api.get<{ taux_eur_xof: string; taux_usd_xof: string }>('/configuration/');
+          set({ rates: { EUR_XOF: Number(cfg.taux_eur_xof), USD_XOF: Number(cfg.taux_usd_xof) } });
+        } catch { /* hors ligne : on garde les derniers taux connus */ }
+      },
       cart: [],
       products: [],
       productsLoaded: false,
@@ -179,12 +183,8 @@ export const useCaisseStore = create<CaisseStore>()(
             total: item.total
           });
         });
-        return cart.reduce((sum, item) => {
-          const xof = toXOF(Number(item.total), item.currency as Currency);
-          if (activeCurrency === 'XOF') return sum + xof;
-          const rate = activeCurrency === 'EUR' ? rates.EUR_XOF : rates.USD_XOF;
-          return sum + xof / rate;
-        }, 0);
+        return cart.reduce((sum, item) =>
+          sum + fromXOF(toXOF(Number(item.total), item.currency, rates), activeCurrency, rates), 0);
       },
       cartItemCount: () => get().cart.reduce((s, i) => s + i.quantity, 0),
 
@@ -253,7 +253,7 @@ export const useCaisseStore = create<CaisseStore>()(
             montant: p.amount,
             montant_xof: p.amountXOF,
             monnaie_rendue: p.change || 0,
-            taux_change: p.currency === 'EUR' ? rates.EUR_XOF : p.currency === 'USD' ? rates.USD_XOF : 1,
+            taux_change: toXOF(1, p.currency, rates),
           })),
         };
 
@@ -325,6 +325,7 @@ export const useCaisseStore = create<CaisseStore>()(
       partialize: (s) => ({
         currentUser: s.currentUser,
         activeCurrency: s.activeCurrency,
+        rates: s.rates, // derniers taux connus, pour encaisser en devises hors ligne
         offlineQueue: s.offlineQueue,
         products: s.products, // catalogue disponible hors ligne, même après un rechargement
         sales: s.sales.slice(0, 50), // Garder 50 dernières ventes
