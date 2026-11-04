@@ -24,7 +24,7 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
     const html = buildTicketHtml({
       numero_ticket: sale.ticketNumber,
       createdAt: sale.createdAt,
-      items: sale.items.map(i => ({ name: i.product.name ?? i.product.nom ?? '', qty: i.quantity, price: i.unitPrice, currency: sale.currency })),
+      items: sale.items.map(i => ({ name: i.product.name ?? i.product.nom ?? '', qty: i.quantity, price: i.unitPrice, currency: i.currency, discount: i.discount, total: i.total })),
       total: sale.total,
       currency: sale.currency,
       paiements: sale.payments.map(p => ({ methode: p.method, montant: p.amount, devise: p.currency })),
@@ -63,24 +63,31 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
       .separator()
       .align('left')
       .line(`Ticket : ${sale.ticketNumber}`)
-      .line(`Date   : ${new Date(sale.createdAt).toLocaleString('fr-FR')}`)
-      .separator();
+      .line(`Date   : ${new Date(sale.createdAt).toLocaleString('fr-FR')}`);
+    if (sale.passengerName) escposPrinter.line(`Pass.  : ${sale.passengerName}`);
+    if (sale.flightRef) escposPrinter.line(`Vol    : ${sale.flightRef}`);
+    if (sale.destination) escposPrinter.line(`Dest.  : ${sale.destination}`);
+    escposPrinter.separator();
     sale.items.forEach(item => {
       escposPrinter.line((item.product.name ?? item.product.nom ?? '').substring(0, 32));
-      escposPrinter.row(`  ${item.quantity} x ${fmtN(item.unitPrice)}`, fmtN(item.quantity * item.unitPrice));
+      const remise = item.discount > 0 ? ` -${item.discount}%` : '';
+      escposPrinter.row(`  ${item.quantity} x ${fmtN(item.unitPrice)}${remise}`, fmtN(item.total));
     });
+    // Texte ASCII : les imprimantes thermiques n'affichent pas toutes l'UTF-8
     escposPrinter
       .separator()
       .bold(true).row('TOTAL', `${fmtN(sale.total)} ${sale.currency}`).bold(false)
+      .line(`TVA : ${fmtN(0)} ${sale.currency} (exoneree)`)
+      .line('Vente hors-taxes - Duty Free')
       .separator()
       .align('center').text(`${boutique?.msg_politesse || 'Merci. Bon voyage.'}\n`)
       .feed(4).cut();
     await escposPrinter.print();
   };
 
-  const totalXOF = sale.payments.reduce((s, p) => s + p.amountXOF, 0);
   const totalPaid = sale.payments.reduce((s, p) => s + p.amount, 0);
-  const changeXOF = Math.max(0, totalXOF - sale.total);
+  // Monnaie enregistrée sur les paiements (calculée par le serveur en ligne) : pas de résidu d'arrondi
+  const changeXOF = Math.round(sale.payments.reduce((s, p) => s + (p.change || 0), 0));
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 24px', fontFamily: 'IBM Plex Sans, sans-serif' }}>
@@ -111,12 +118,14 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
           </div>
 
           {/* Passager */}
-          {sale.passengerName && (
+          {(sale.passengerName || sale.flightRef || sale.destination) && (
             <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--c-info-dim)', borderRadius: 7, border: '1px solid var(--c-info-bd)', fontSize: 12 }}>
-              <div style={{ fontWeight: 700, color: 'var(--c-info)', marginBottom: 2 }}>✈ {sale.passengerName}</div>
-              <div style={{ color: 'var(--text-3)', fontFamily: 'IBM Plex Mono, monospace' }}>
-                Vol {sale.flightRef} → {sale.destination}
-              </div>
+              {sale.passengerName && <div style={{ fontWeight: 700, color: 'var(--c-info)', marginBottom: 2 }}>✈ {sale.passengerName}</div>}
+              {(sale.flightRef || sale.destination) && (
+                <div style={{ color: 'var(--text-3)', fontFamily: 'IBM Plex Mono, monospace' }}>
+                  {[sale.flightRef && `Vol ${sale.flightRef}`, sale.destination && `→ ${sale.destination}`].filter(Boolean).join(' ')}
+                </div>
+              )}
             </div>
           )}
 
@@ -145,6 +154,13 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
               <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>
                 {fmt(sale.total, sale.currency)}
               </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12, color: 'var(--text-3)' }}>
+              <span>TVA</span>
+              <span style={{ fontFamily: 'IBM Plex Mono, monospace' }}>{fmt(0, sale.currency)} (exonérée)</span>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: 'var(--text-2)', textAlign: 'center' }}>
+              Vente hors-taxes – Duty Free
             </div>
             {changeXOF > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12, color: 'var(--text-3)' }}>

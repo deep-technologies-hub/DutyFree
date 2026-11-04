@@ -66,11 +66,14 @@ export interface ApiError {
   detail?: Record<string, unknown>;
 }
 
-/** Premier message d'erreur de validation DRF ({champ: ["message"]}) */
-function firstFieldError(body: Record<string, unknown>): string | undefined {
-  for (const [field, value] of Object.entries(body)) {
-    const msg = Array.isArray(value) ? value[0] : value;
-    if (typeof msg === 'string') return field === 'non_field_errors' ? msg : `${field} : ${msg}`;
+/** Premier message d'erreur de validation DRF ({champ: ["message"]}, y compris imbriqué : {lignes: [{devise: [...]}]}) */
+export function firstFieldError(body: unknown, field?: string): string | undefined {
+  if (typeof body === 'string') return field && field !== 'non_field_errors' ? `${field} : ${body}` : body;
+  const entries: [string | undefined, unknown][] = Array.isArray(body) ? body.map(v => [field, v])
+    : body && typeof body === 'object' ? Object.entries(body) : [];
+  for (const [f, v] of entries) {
+    const msg = firstFieldError(v, f);
+    if (msg) return msg;
   }
   return undefined;
 }
@@ -231,8 +234,11 @@ export const stockApi = {
 export const ventesApi = {
   create: (data: VentePayload) => api.post<VenteResponse>('/ventes/', data),
   list: (params = '') => api.get<PaginatedResponse<VenteListItem>>(`/ventes/${params}`),
+  /** Montants d'un panier aux prix du catalogue serveur, sans enregistrement */
+  calculer: (data: Pick<VentePayload, 'devise'> & { lignes: Pick<LigneVentePayload, 'produit' | 'quantite' | 'devise' | 'remise'>[] }) =>
+    api.post<CalculVente>('/ventes/calculer/', data),
   syncOffline: (ventes: VentePayload[]) =>
-    api.post<{ synced: number; errors: unknown[]; tickets: string[] }>('/ventes/sync_offline/', { ventes }),
+    api.post<SyncOfflineResult>('/ventes/sync_offline/', { ventes }),
   dashboard: () => api.get<DashboardData>('/ventes/dashboard/'),
   tauxCapture: () => api.get<TauxCapture[]>('/ventes/taux_capture/'),
   passagers: {
@@ -380,9 +386,38 @@ export interface PaiementPayload {
   taux_change: number;
 }
 
+/** Vente telle qu'enregistrée : montants recalculés par le serveur (décimaux sérialisés en chaînes). */
 export interface VenteResponse {
   id: number;
   numero_ticket: string;
+  devise: string;
+  sous_total: string;
+  remise_totale: string;
+  total: string;
+  lignes: {
+    produit: number;
+    produit_nom: string;
+    quantite: number;
+    prix_unitaire: string;
+    devise: string;
+    remise: string;
+    total: string;
+  }[];
+  paiements: { methode: string; devise: string; montant: string; montant_xof: string; monnaie_rendue: string }[];
+}
+
+/** `errors` : refus de validation (définitif) ; `error` : incident serveur (on réessaiera) */
+export interface SyncOfflineResult {
+  synced: number;
+  tickets: string[];
+  /** `conservee` : vente refusée gardée par le serveur pour régularisation dans le backoffice */
+  errors: { ticket: string; errors?: unknown; error?: string; conservee?: boolean }[];
+}
+
+export interface CalculVente {
+  devise: string;
+  total: string;
+  lignes: { produit: number; prix_unitaire: string; total: string }[];
 }
 
 export interface VenteListItem {

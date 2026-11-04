@@ -1,9 +1,14 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import models
 from django.conf import settings
 from stock.models import Produit
 from tenants.models import TenantModel
+
+
+def arrondir(montant):
+    return Decimal(montant).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
 
 class Vente(TenantModel):
     DEVISES = [('XOF','XOF'), ('EUR','EUR'), ('USD','USD')]
@@ -17,6 +22,12 @@ class Vente(TenantModel):
     sous_total = models.DecimalField(max_digits=14, decimal_places=2)
     remise_totale = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=14, decimal_places=2)
+    total_xof = models.DecimalField(max_digits=16, decimal_places=2, default=0,
+                                    help_text="Total converti au taux du jour de la vente (base des statistiques)")
+    ecart_paiement = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0,
+        help_text="Encaissé net − total, en XOF. Non nul uniquement pour une vente hors ligne à vérifier "
+                  "(négatif : manque, positif : trop-perçu non rendu)")
     # Fidélité
     carte_fidelite = models.ForeignKey('fidelite.CarteFidelite', on_delete=models.SET_NULL, null=True, blank=True, related_name='ventes')
     # Passager
@@ -55,12 +66,23 @@ class LigneVente(models.Model):
     devise = models.CharField(max_length=3, choices=DEVISES, default='XOF')
     remise = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=14, decimal_places=2)
+    total_xof = models.DecimalField(max_digits=16, decimal_places=2, default=0,
+                                    help_text="Total converti au taux du jour de la vente")
 
     class Meta:
         verbose_name = "Ligne de vente"
 
+    @property
+    def montant_brut(self):
+        """Montant avant remise, dans la devise de la ligne."""
+        return self.quantite * Decimal(self.prix_unitaire)
+
+    def calculer_total(self):
+        self.total = arrondir(self.montant_brut * (1 - Decimal(self.remise) / 100))
+        return self.total
+
     def save(self, *args, **kwargs):
-        self.total = self.quantite * Decimal(self.prix_unitaire) * (1 - Decimal(self.remise) / 100)
+        self.calculer_total()
         super().save(*args, **kwargs)
 
 
@@ -85,6 +107,37 @@ class Paiement(models.Model):
 
     def __str__(self):
         return f"{self.methode} {self.montant} {self.devise}"
+
+
+class VenteRejetee(TenantModel):
+    """
+    Vente hors ligne refusée à la synchronisation. Elle a eu lieu (articles remis, argent
+    encaissé) : on la conserve pour qu'un responsable la réintègre ou la classe.
+    """
+    STATUTS = [('a_traiter', 'À traiter'), ('reintegree', 'Réintégrée'), ('classee', 'Classée')]
+
+    numero_ticket = models.CharField(max_length=40)
+    numero_caisse = models.CharField(max_length=20, blank=True)
+    caissier = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                 related_name='ventes_rejetees')
+    payload = models.JSONField(help_text="Vente telle qu'envoyée par la caisse")
+    motif = models.TextField()
+    statut = models.CharField(max_length=12, choices=STATUTS, default='a_traiter')
+    note = models.CharField(max_length=200, blank=True)
+    traitee_par = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                    blank=True, related_name='+')
+    traitee_le = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Vente hors ligne refusée"
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['organisation', 'numero_ticket'], name='uniq_vente_rejetee_ticket'),
+        ]
+
+    def __str__(self):
+        return f"{self.numero_ticket} — {self.get_statut_display()}"
 
 
 class DonneesPassagers(TenantModel):

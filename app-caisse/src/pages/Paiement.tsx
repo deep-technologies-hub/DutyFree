@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useCaisseStore } from '../store/caisseStore';
+import { useEffect, useState } from 'react';
+import { useCaisseStore, rejetDefinitif, toXOF as toXOFAuTaux, fromXOF as fromXOFAuTaux } from '../store/caisseStore';
+import type { ApiError } from '../api';
 import { ArrowLeft, CreditCard, Banknote, Smartphone, Check, Plus, X } from 'lucide-react';
 import type { Currency, PaymentMethod, Payment, Sale } from '../types';
 
@@ -17,7 +18,7 @@ const CURRENCIES: Currency[] = ['XOF', 'EUR', 'USD'];
 const METHODS: PaymentMethod[] = ['especes', 'carte', 'mobile_money'];
 
 export default function Paiement({ onBack, onComplete }: { onBack: () => void; onComplete: (sale: Sale) => void }) {
-  const { cartTotal, activeCurrency, completeSale, cart, rates } = useCaisseStore();
+  const { cartTotal, activeCurrency, completeSale, cart, rates, isOnline, refreshCartPrices } = useCaisseStore();
   const total = cartTotal();
 
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -25,9 +26,23 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
   const [currency, setCurrency] = useState<Currency>(activeCurrency);
   const [amount, setAmount] = useState('');
   const [done, setDone] = useState(false);
+  // En ligne, le panier est d'abord mis aux prix du serveur (catalogue local éventuellement périmé)
+  const [verification, setVerification] = useState(isOnline);
+  const [avis, setAvis] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
 
-  const toXOF = (v: number, c: Currency) => c === 'EUR' ? v * rates.EUR_XOF : c === 'USD' ? v * rates.USD_XOF : v;
-  const fromXOF = (v: number, c: Currency) => c === 'EUR' ? v / rates.EUR_XOF : c === 'USD' ? v / rates.USD_XOF : v;
+  useEffect(() => {
+    if (!isOnline) return;
+    refreshCartPrices()
+      .then(change => { if (change) setAvis("Prix mis à jour depuis le catalogue : vérifiez le total avant d'encaisser."); })
+      .catch(e => { if (rejetDefinitif(e)) setErreur((e as ApiError).message); })
+      .finally(() => setVerification(false));
+  }, [isOnline, refreshCartPrices]);
+
+  const toXOF = (v: number, c: Currency) => toXOFAuTaux(v, c, rates);
+  const fromXOF = (v: number, c: Currency) => fromXOFAuTaux(v, c, rates);
+  // Sans taux configurés connus, seul le XOF peut être encaissé
+  const devises = rates ? CURRENCIES : ['XOF' as Currency];
 
   const paidXOF = payments.reduce((s, p) => s + p.amountXOF, 0);
   const totalXOF = toXOF(total, activeCurrency);
@@ -47,7 +62,16 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
   const handleConfirm = () => {
     if (!isPaid) return;
     setDone(true);
-    setTimeout(() => { const sale = completeSale(payments); onComplete(sale); }, 800);
+    setErreur(null);
+    setTimeout(async () => {
+      try {
+        onComplete(await completeSale(payments));
+      } catch (e) {
+        // Refus du serveur : la vente n'est pas enregistrée, le panier et les règlements restent
+        setDone(false);
+        setErreur((e as ApiError).message);
+      }
+    }, 800);
   };
 
   const quickAmounts = currency === 'XOF' ? [5000, 10000, 25000, 50000, 100000] : [10, 20, 50, 100, 200];
@@ -113,14 +137,14 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
           <div style={{ marginBottom: 18 }}>
             <label className="label-xs" style={{ marginBottom: 8 }}>Devise de paiement</label>
             <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-              {CURRENCIES.map(c => (
+              {devises.map(c => (
                 <button key={c} onClick={() => { setCurrency(c); setAmount(''); }}
                   style={{ flex: 1, padding: '9px', border: 'none', background: currency === c ? 'var(--accent)' : 'transparent', color: currency === c ? 'var(--bg)' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'IBM Plex Mono, monospace', transition: 'all 0.12s' }}>
                   {c}
                 </button>
               ))}
             </div>
-            {currency !== 'XOF' && (
+            {currency !== 'XOF' && rates && (
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, textAlign: 'right', fontFamily: 'IBM Plex Mono, monospace' }}>
                 1 {currency} = {currency === 'EUR' ? rates.EUR_XOF.toFixed(3) : rates.USD_XOF.toFixed(2)} XOF
               </div>
@@ -193,7 +217,7 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
           </div>
 
           <div style={{ padding: '18px 16px', borderTop: '1px solid var(--border)' }}>
-            {changeXOF > 0 && isPaid && (
+            {changeXOF >= 0.5 && isPaid && (
               <div style={{ marginBottom: 16, padding: '14px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 10, textAlign: 'center' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Monnaie à rendre</div>
                 <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 24, fontWeight: 800, color: 'var(--accent)' }}>
@@ -201,9 +225,15 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
                 </div>
               </div>
             )}
-            <button onClick={handleConfirm} disabled={!isPaid} className="btn btn-primary btn-lg"
-              style={{ width: '100%', justifyContent: 'center', gap: 8, opacity: isPaid ? 1 : 0.3 }}>
-              <Check size={16} /> Valider la vente
+            {avis && (
+              <div className="badge badge-warn" style={{ display: 'block', marginBottom: 12, padding: '8px 10px', fontSize: 11, whiteSpace: 'normal' }}>{avis}</div>
+            )}
+            {erreur && (
+              <div className="badge badge-red" style={{ display: 'block', marginBottom: 12, padding: '8px 10px', fontSize: 11, whiteSpace: 'normal' }}>{erreur}</div>
+            )}
+            <button onClick={handleConfirm} disabled={!isPaid || verification} className="btn btn-primary btn-lg"
+              style={{ width: '100%', justifyContent: 'center', gap: 8, opacity: isPaid && !verification ? 1 : 0.3 }}>
+              <Check size={16} /> {verification ? 'Vérification des prix…' : 'Valider la vente'}
             </button>
           </div>
         </div>

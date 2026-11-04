@@ -21,7 +21,6 @@ export interface Product {
   priceEUR?: number;     // alias legacy
   priceUSD?: number;     // alias legacy
   stock: number;
-  taxRate?: number;
   image?: string;
 }
 

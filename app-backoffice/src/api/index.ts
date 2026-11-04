@@ -286,6 +286,14 @@ export const ventesApi = {
   syncOffline: (ventes: VentePayload[]) =>
     api.post<{ synced: number; errors: unknown[] }>('/ventes/sync_offline/', { ventes }),
   dashboard: () => api.get<DashboardData>('/ventes/dashboard/'),
+  /** Ventes hors ligne refusées à la synchronisation, à régulariser (admin / superviseur) */
+  rejetees: {
+    list: (statut = 'a_traiter') => fetchAllPages<VenteRejetee>(`/ventes/rejetees/?statut=${statut}`),
+    /** Enregistre la vente (stock décrémenté) une fois la cause corrigée */
+    reintegrer: (id: number, note = '') => api.post<{ rejet: VenteRejetee }>(`/ventes/rejetees/${id}/reintegrer/`, { note }),
+    /** Clôt sans enregistrer (doublon, test…) */
+    classer: (id: number, note: string) => api.post<VenteRejetee>(`/ventes/rejetees/${id}/classer/`, { note }),
+  },
   tauxCapture: () => api.get<TauxCapture[]>('/ventes/taux_capture/'),
   passagers: {
     list: () => api.get<PaginatedResponse<DonneesPassagers>>('/ventes/passagers/'),
@@ -447,12 +455,28 @@ export interface VenteResponse {
   numero_ticket: string;
 }
 
+export interface VenteRejetee {
+  id: number;
+  numero_ticket: string;
+  numero_caisse: string;
+  caissier_nom: string;
+  payload: { date_locale?: string; devise?: string; total?: number; lignes?: unknown[] };
+  motif: string;
+  statut: 'a_traiter' | 'reintegree' | 'classee';
+  note: string;
+  created_at: string;
+}
+
 export interface VenteListItem {
   id: number;
   numero_ticket: string;
   caissier_nom: string;
   numero_caisse: string;
   total: number;
+  /** Total converti au taux du jour de la vente */
+  total_xof: number;
+  /** Encaissé net − total (XOF) : non nul pour une vente hors ligne mal encaissée */
+  ecart_paiement: number;
   devise: string;
   statut: string;
   date_locale: string;
@@ -461,7 +485,7 @@ export interface VenteListItem {
   destination: string;
   synced: boolean;
   nb_articles: number;
-  lignes: { produit: number; produit_nom: string; quantite: number; prix_unitaire: number; total: number }[];
+  lignes: { produit: number; produit_nom: string; quantite: number; prix_unitaire: number; devise: string; total: number; total_xof: number }[];
   paiements: { methode: 'especes' | 'carte' | 'mobile_money'; devise: string; montant: number; montant_xof: number; monnaie_rendue: number; taux_change: number }[];
 }
 

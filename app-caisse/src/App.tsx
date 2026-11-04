@@ -4,7 +4,7 @@ import Login from './pages/Login';
 import POS from './pages/POS';
 
 export default function App() {
-  const { currentUser, setOnline, isOnline, offlineQueue, syncOfflineQueue, loadProducts, logout } = useCaisseStore();
+  const { currentUser, setOnline, isOnline, offlineQueue, syncOfflineQueue, loadProducts, loadRates, logout } = useCaisseStore();
   const [abonnementInactif, setAbonnementInactif] = useState(false);
 
   // Session expirée → écran de connexion ; abonnement expiré → bandeau (les ventes restent en file locale)
@@ -27,8 +27,8 @@ export default function App() {
   }, [setOnline, syncOfflineQueue]);
 
   useEffect(() => {
-    if (currentUser) loadProducts();
-  }, [currentUser, loadProducts]);
+    if (currentUser) { loadProducts(); loadRates(); }
+  }, [currentUser, loadProducts, loadRates]);
 
   // Sync automatique toutes les 2min si online et queue non vide
   useEffect(() => {

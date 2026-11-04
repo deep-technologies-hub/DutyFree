@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useBackofficeStore } from '../store/backofficeStore';
-import { ventesApi, type ApiError, type VenteListItem } from '../api';
+import { ventesApi, type ApiError, type VenteListItem, type VenteRejetee } from '../api';
 import { downloadExcel, downloadPdf, venteXof, methodesVente, fmtDateHeure, fmtNombre } from '../utils/exports';
-import { Search, Download, Receipt, CreditCard, Banknote, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { Search, Download, Receipt, CreditCard, Banknote, Smartphone, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)} M` : `${fmt(n)}`;
@@ -49,6 +49,33 @@ export default function Ventes() {
   useEffect(() => {
     ventesApi.caisses().then(setCaisses).catch(() => setCaisses([]));
   }, []);
+
+  // Ventes hors ligne refusées par le serveur : à réintégrer ou classer
+  const [rejets, setRejets] = useState<VenteRejetee[]>([]);
+  const [rejetEnCours, setRejetEnCours] = useState<number | null>(null);
+  const chargerRejets = () => ventesApi.rejetees.list().then(setRejets).catch(() => setRejets([]));
+  useEffect(() => { chargerRejets(); }, []);
+
+  const traiterRejet = async (r: VenteRejetee, action: 'reintegrer' | 'classer') => {
+    let note = '';
+    if (action === 'classer') {
+      note = (prompt(`Classer le ticket ${r.numero_ticket} sans l'enregistrer.
+Motif (obligatoire) :`) || '').trim();
+      if (!note) return;
+    }
+    setRejetEnCours(r.id);
+    try {
+      if (action === 'reintegrer') await ventesApi.rejetees.reintegrer(r.id);
+      else await ventesApi.rejetees.classer(r.id, note);
+      const qs = new URLSearchParams(Object.entries(filtres).filter(([, v]) => v)).toString();
+      fetchVentes(qs ? `?${qs}` : '');
+    } catch (e) {
+      alert(`${action === 'reintegrer' ? 'Réintégration' : 'Classement'} impossible : ${(e as ApiError).message ?? 'réessayez'}`);
+    } finally {
+      setRejetEnCours(null);
+      chargerRejets();
+    }
+  };
 
   const filtres = { search: search.trim(), numero_caisse: caisse, methode: method };
 
@@ -131,6 +158,43 @@ export default function Ventes() {
         ))}
       </div>
 
+      {/* Ventes hors ligne refusées */}
+      {rejets.length > 0 && (
+        <div className="card" style={{ marginBottom: 20, border: '1px solid var(--c-warn)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', background: 'var(--c-warn-dim)', color: 'var(--c-warn)', fontWeight: 600, fontSize: 13 }}>
+            <AlertTriangle size={14} />
+            {rejets.length} vente{rejets.length > 1 ? 's' : ''} hors ligne refusée{rejets.length > 1 ? 's' : ''} à la synchronisation
+            <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-2)' }}>
+              : absentes des ventes et du stock. Corrigez la cause (prix manquant…) puis réintégrez-les, ou classez-les.
+            </span>
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr><th>N° Ticket</th><th>Date</th><th>Caisse</th><th style={{ textAlign: 'right' }}>Total caisse</th><th>Motif du refus</th><th></th></tr>
+            </thead>
+            <tbody>
+              {rejets.map(r => (
+                <tr key={r.id}>
+                  <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>{r.numero_ticket}</td>
+                  <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--text-3)' }}>
+                    {new Date(r.payload.date_locale || r.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td style={{ fontSize: 12 }}>{r.numero_caisse}{r.caissier_nom ? ` · ${r.caissier_nom}` : ''}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                    {r.payload.total != null ? `${fmt(Number(r.payload.total))} ${r.payload.devise ?? ''}` : '—'}
+                  </td>
+                  <td style={{ fontSize: 12, color: 'var(--c-down)' }}>{r.motif}</td>
+                  <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    <button className="btn btn-xs btn-primary" disabled={rejetEnCours === r.id} onClick={() => traiterRejet(r, 'reintegrer')}>Réintégrer</button>
+                    <button className="btn btn-xs btn-ghost" style={{ marginLeft: 6 }} disabled={rejetEnCours === r.id} onClick={() => traiterRejet(r, 'classer')}>Classer</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         <SlidersHorizontal size={13} color="var(--text-3)" />
@@ -186,6 +250,7 @@ export default function Ventes() {
                   <td>
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: 'var(--accent)' }}>{sale.numero_ticket}</span>
                     {sale.statut === 'annulee' && <span className="badge badge-danger" style={{ marginLeft: 6 }}>Annulée</span>}
+                    {Number(sale.ecart_paiement) !== 0 && <span className="badge badge-warn" style={{ marginLeft: 6 }} title="Vente hors ligne dont l'encaissement ne correspond pas au total">Écart</span>}
                   </td>
                   <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--text-3)' }}>
                     {new Date(sale.date_locale).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -243,7 +308,7 @@ export default function Ventes() {
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 13 }}>
                   <div style={{ flex: 1, paddingRight: 16 }}>
                     <div style={{ fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>{l.produit_nom || `Produit n° ${l.produit}`}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{l.quantite} x {fmt(l.prix_unitaire || 0)} {selectedTicket.devise}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{l.quantite} x {fmt(l.prix_unitaire || 0)} {l.devise}</div>
                   </div>
                   <div style={{ fontWeight: 700, color: 'var(--text)', fontFamily: 'IBM Plex Mono, monospace' }}>
                     {fmt(Number(l.total))}
@@ -254,7 +319,7 @@ export default function Ventes() {
 
             <div style={{ padding: '20px 24px', background: '#FAFAFA', borderTop: '2px dashed var(--border-3)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-2)' }}>TOTAL TTC</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-2)' }}>TOTAL HT</span>
                 <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--accent)', fontFamily: 'IBM Plex Mono, monospace' }}>
                   {fmt(Number(selectedTicket.total))} <span style={{ fontSize: 16 }}>{selectedTicket.devise}</span>
                 </span>
@@ -262,6 +327,11 @@ export default function Ventes() {
               <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: -12, marginBottom: 16 }}>
                 Paiement : {methodesVente(selectedTicket)}
               </div>
+              {Number(selectedTicket.ecart_paiement) !== 0 && (
+                <div className="badge badge-warn" style={{ display: 'block', marginBottom: 16, padding: '8px 10px', fontSize: 12, whiteSpace: 'normal' }}>
+                  Vente hors ligne à vérifier : {Number(selectedTicket.ecart_paiement) < 0 ? 'il manque' : 'trop-perçu non rendu de'} {fmt(Math.abs(Number(selectedTicket.ecart_paiement)))} XOF à l'encaissement.
+                </div>
+              )}
               {selectedTicket.statut === 'annulee' ? (
                 <div className="badge badge-danger" style={{ display: 'block', textAlign: 'center', padding: 8, marginBottom: 12 }}>
                   Vente annulée : articles remis en stock

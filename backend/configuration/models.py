@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -41,6 +43,12 @@ class Configuration(models.Model):
 
     def __str__(self):
         return self.nom_boutique
+
+    def taux_vers_xof(self, devise):
+        """Valeur en XOF d'une unité de `devise`."""
+        taux = {'EUR': self.taux_eur_xof, 'USD': self.taux_usd_xof}.get(devise, 1)
+        # Juste après création, l'attribut vaut encore le défaut float du champ
+        return Decimal(str(taux))
 
     @classmethod
     def get(cls, organisation):

@@ -1,11 +1,15 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
+from configuration.models import Configuration
 from stock.models import Categorie
 from tenants.tests import client_for, make_org, produit
+from utilisateurs.models import Utilisateur
+from ventes.models import Vente, VenteRejetee
 
 
 class FiltresVentesEtExportsTests(TestCase):
@@ -63,6 +67,8 @@ class FiltresVentesEtExportsTests(TestCase):
         self.assertIsNone(r.data['next'])
 
     def test_dashboard_paiements_nets_de_la_monnaie_rendue(self):
+        self.pa.prix_xof = 8000
+        self.pa.save()
         self.vendre(self.c, self.pa, 'T-1', 'CAISSE-01', 'especes', montant=8000, rendu=2000)
         paiements = self.c.get('/api/ventes/dashboard/').data['ca_by_payment']
         self.assertEqual(float(paiements[0]['amount']), 8000)
@@ -81,6 +87,181 @@ class FiltresVentesEtExportsTests(TestCase):
         # Une autre organisation ne peut ni lire ni modifier ces données
         self.assertEqual(client_for(self.admin_b).patch(f"/api/ventes/passagers/{ligne['id']}/",
                                                         {'nombre_passagers': 1}, format='json').status_code, 404)
+
+
+class MontantsRecalculesTests(TestCase):
+    """Les montants d'une vente viennent du catalogue, jamais de la caisse."""
+
+    def setUp(self):
+        cache.clear()
+        self.a, self.admin_a = make_org('alpha')
+        self.p = produit(self.a, 'A-1', stock=100, prix_eur=10)
+        self.c = client_for(self.admin_a)
+        Configuration.objects.filter(organisation=self.a).update(taux_eur_xof=650)
+
+    def payload(self, ticket='T-1', devise='XOF'):
+        return {
+            'numero_ticket': ticket, 'numero_caisse': 'C1', 'devise': devise,
+            'sous_total': 1, 'remise_totale': 0, 'total': 1, 'date_locale': timezone.now().isoformat(),
+            'lignes': [{'produit': self.p.id, 'quantite': 2, 'prix_unitaire': 1, 'total': 2}],
+            'paiements': [{'methode': 'especes', 'montant': 100000, 'montant_xof': 2}],
+        }
+
+    def test_prix_falsifie_enregistre_au_vrai_prix(self):
+        r = self.c.post('/api/ventes/', self.payload(), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        vente = Vente.objects.get(numero_ticket='T-1')
+        ligne = vente.lignes.get()
+        self.assertEqual((ligne.prix_unitaire, ligne.total), (Decimal('1000'), Decimal('2000')))
+        self.assertEqual((vente.sous_total, vente.remise_totale, vente.total),
+                         (Decimal('2000'), Decimal('0'), Decimal('2000')))
+        # La réponse renvoie les montants recalculés, lignes comprises
+        self.assertEqual(Decimal(r.data['total']), Decimal('2000'))
+        self.assertEqual(Decimal(r.data['lignes'][0]['prix_unitaire']), Decimal('1000'))
+        self.assertEqual(r.data['lignes'][0]['produit_nom'], 'Produit A-1')
+
+    def test_remise_et_conversion_dans_la_devise_de_la_vente(self):
+        # 2 × 10 EUR à −10 % = 18 EUR, vente en XOF au taux configuré de 650
+        r = self.c.post('/api/ventes/', self.payload() | {
+            'lignes': [{'produit': self.p.id, 'quantite': 2, 'devise': 'EUR', 'remise': 10,
+                        'prix_unitaire': 1, 'total': 1}]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        vente = Vente.objects.get(numero_ticket='T-1')
+        self.assertEqual(vente.lignes.get().total, Decimal('18'))
+        self.assertEqual((vente.sous_total, vente.remise_totale, vente.total),
+                         (Decimal('13000'), Decimal('1300'), Decimal('11700')))
+
+    def test_sync_offline_recalcule_aussi(self):
+        self.c.post('/api/ventes/sync_offline/', {'ventes': [self.payload('OFF-1')]}, format='json')
+        self.assertEqual(Vente.objects.get(numero_ticket='OFF-1').total, Decimal('2000'))
+
+    def test_dashboard_ca_par_categorie_converti_en_xof(self):
+        # 2 × 10 EUR (13 000 XOF au taux de 650) + 1 × 1 000 XOF
+        self.c.post('/api/ventes/', self.payload() | {'lignes': [
+            {'produit': self.p.id, 'quantite': 2, 'devise': 'EUR'},
+            {'produit': self.p.id, 'quantite': 1, 'devise': 'XOF'}]}, format='json')
+        cat = self.c.get('/api/ventes/dashboard/').data['ca_by_categorie'][0]
+        self.assertEqual(Decimal(cat['ca']), Decimal('14000'))
+
+    def test_statistiques_en_xof_au_taux_du_jour_de_la_vente(self):
+        # Vente de 20 EUR à 650 : 13 000 XOF, même si le taux change ensuite
+        self.c.post('/api/ventes/', self.payload(devise='EUR') | {
+            'lignes': [{'produit': self.p.id, 'quantite': 2, 'devise': 'EUR'}]}, format='json')
+        self.assertEqual(Vente.objects.get().total_xof, Decimal('13000'))
+        Configuration.objects.filter(organisation=self.a).update(taux_eur_xof=700)
+        dash = self.c.get('/api/ventes/dashboard/').data
+        for ca in (dash['ca_month'], dash['ca_today'], dash['ticket_moyen'],
+                   dash['ca_daily'][0]['ca'], dash['ca_by_cashier'][0]['ca'], dash['ca_by_categorie'][0]['ca']):
+            self.assertEqual(Decimal(ca), Decimal('13000'))
+
+    def test_remise_reservee_a_la_gestion(self):
+        avec_remise = lambda ticket: self.payload(ticket) | {
+            'lignes': [{'produit': self.p.id, 'quantite': 1, 'remise': 50}]}
+        caissier = Utilisateur.objects.create(organisation=self.a, username='awa', role='caissier')
+        r = client_for(caissier).post('/api/ventes/', avec_remise('T-1'), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('remise', str(r.data))
+        sup = Utilisateur.objects.create(organisation=self.a, username='sam', role='superviseur')
+        self.assertEqual(client_for(sup).post('/api/ventes/', avec_remise('T-2'), format='json').status_code, 201)
+        self.assertEqual(Vente.objects.get().total, Decimal('500'))
+
+    def avec_paiements(self, ticket, *paiements, devise='XOF'):
+        return self.payload(ticket, devise) | {'paiements': [
+            {'methode': m, 'devise': d, 'montant': montant, 'montant_xof': 999999, 'monnaie_rendue': 0}
+            for m, d, montant in paiements]}
+
+    def test_paiements_convertis_et_monnaie_calculee_par_le_serveur(self):
+        # Total 2 000 XOF : 2 EUR par carte (1 300 XOF au taux de 650) + 1 000 XOF en espèces
+        r = self.c.post('/api/ventes/', self.avec_paiements('T-1', ('carte', 'EUR', 2), ('especes', 'XOF', 1000)),
+                        format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        carte, especes = sorted(Vente.objects.get().paiements.all(), key=lambda p: p.methode)
+        self.assertEqual((carte.montant_xof, carte.taux_change, carte.monnaie_rendue),
+                         (Decimal('1300'), Decimal('650'), Decimal('0')))
+        self.assertEqual((especes.montant_xof, especes.monnaie_rendue), (Decimal('1000'), Decimal('300')))
+        self.assertEqual(Vente.objects.get().ecart_paiement, 0)
+
+    def test_paiement_en_ligne_incoherent_refuse(self):
+        insuffisant = self.avec_paiements('T-1', ('especes', 'XOF', 1999))
+        r = self.c.post('/api/ventes/', insuffisant, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('il manque 1 XOF', str(r.data))
+        carte_en_trop = self.avec_paiements('T-2', ('carte', 'XOF', 5000))
+        self.assertEqual(self.c.post('/api/ventes/', carte_en_trop, format='json').status_code, 400)
+        self.assertFalse(Vente.objects.exists())
+
+    def test_vente_hors_ligne_mal_encaissee_enregistree_avec_ecart(self):
+        r = self.c.post('/api/ventes/sync_offline/', {'ventes': [
+            self.avec_paiements('OFF-1', ('especes', 'XOF', 1500))]}, format='json')
+        self.assertEqual(r.data['synced'], 1, r.data)
+        self.assertEqual(Vente.objects.get().ecart_paiement, Decimal('-500'))
+        self.assertEqual(self.c.get('/api/ventes/').data['results'][0]['ecart_paiement'], '-500.00')
+
+    def test_calcul_d_un_panier_sans_enregistrement(self):
+        r = self.c.post('/api/ventes/calculer/', {'devise': 'XOF', 'lignes': [
+            {'produit': self.p.id, 'quantite': 2, 'devise': 'EUR', 'prix_unitaire': 1}]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((Decimal(r.data['total']), Decimal(r.data['lignes'][0]['prix_unitaire'])),
+                         (Decimal('13000'), Decimal('10')))
+        self.assertFalse(Vente.objects.exists())
+        caissier = Utilisateur.objects.create(organisation=self.a, username='awa', role='caissier')
+        self.assertEqual(client_for(caissier).post('/api/ventes/calculer/', {'lignes': [
+            {'produit': self.p.id, 'quantite': 1}]}, format='json').status_code, 200)
+
+    def test_sync_offline_signale_les_refus_definitifs(self):
+        # La caisse retire de sa file les ventes refusées à la validation (clé « errors »)
+        refusee = self.payload('OFF-1', devise='USD') | {'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}
+        r = self.c.post('/api/ventes/sync_offline/', {'ventes': [refusee, self.payload('OFF-2')]}, format='json')
+        self.assertEqual((r.data['tickets'], [e['ticket'] for e in r.data['errors']]), (['OFF-2'], ['OFF-1']))
+        self.assertIn('Prix en USD', str(r.data['errors'][0]['errors']))
+
+    def test_vente_refusee_conservee_puis_reintegree(self):
+        caissier = Utilisateur.objects.create(organisation=self.a, username='awa', role='caissier')
+        refusee = self.payload('OFF-1', devise='USD') | {'lignes': [{'produit': self.p.id, 'quantite': 3, 'devise': 'USD'}],
+                                                       'paiements': [{'methode': 'especes', 'devise': 'USD', 'montant': 30}]}
+        r = client_for(caissier).post('/api/ventes/sync_offline/', {'ventes': [refusee]}, format='json')
+        self.assertTrue(r.data['errors'][0]['conservee'])
+        # Renvoyée une seconde fois (caisse sans réponse) : pas de doublon
+        client_for(caissier).post('/api/ventes/sync_offline/', {'ventes': [refusee]}, format='json')
+        rejet = VenteRejetee.objects.get()
+        self.assertIn('Prix en USD', rejet.motif)
+        # Réservé à la gestion
+        self.assertEqual(client_for(caissier).get('/api/ventes/rejetees/').status_code, 403)
+        self.assertEqual(self.c.get('/api/ventes/rejetees/?statut=a_traiter').data['count'], 1)
+
+        url = f'/api/ventes/rejetees/{rejet.id}/reintegrer/'
+        self.assertEqual(self.c.post(url, {}, format='json').status_code, 400)  # prix toujours absent
+        self.p.prix_usd = 10
+        self.p.save()
+        Configuration.objects.filter(organisation=self.a).update(taux_usd_xof=600)
+        r = self.c.post(url, {'note': 'Prix USD renseigné'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        vente = Vente.objects.get(numero_ticket='OFF-1')
+        self.assertEqual((vente.total, vente.caissier, vente.ecart_paiement), (Decimal('30'), caissier, 0))
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.stock, 97)
+        rejet.refresh_from_db()
+        self.assertEqual((rejet.statut, rejet.traitee_par), ('reintegree', self.admin_a))
+        self.assertEqual(self.c.post(url, {}, format='json').status_code, 400)  # déjà traitée
+
+    def test_vente_refusee_classee_sans_suite(self):
+        refusee = self.payload('OFF-1', devise='USD') | {'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}
+        self.c.post('/api/ventes/sync_offline/', {'ventes': [refusee]}, format='json')
+        rejet = VenteRejetee.objects.get()
+        url = f'/api/ventes/rejetees/{rejet.id}/classer/'
+        self.assertEqual(self.c.post(url, {}, format='json').status_code, 400)  # motif obligatoire
+        self.assertEqual(self.c.post(url, {'note': 'Vente de test'}, format='json').status_code, 200)
+        self.assertEqual(VenteRejetee.objects.get().statut, 'classee')
+        self.assertFalse(Vente.objects.exists())
+        # Isolation : une autre organisation ne la voit pas
+        _, admin_b = make_org('beta')
+        self.assertEqual(client_for(admin_b).get('/api/ventes/rejetees/').data['count'], 0)
+
+    def test_prix_absent_dans_la_devise_refuse(self):
+        r = self.c.post('/api/ventes/', self.payload(devise='USD') | {
+            'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(Vente.objects.exists())
 
 
 class CategoriesTests(TestCase):
