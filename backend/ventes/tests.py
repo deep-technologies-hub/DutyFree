@@ -8,6 +8,7 @@ from django.utils import timezone
 from configuration.models import Configuration
 from stock.models import Categorie
 from tenants.tests import client_for, make_org, produit
+from utilisateurs.models import Utilisateur
 from ventes.models import Vente
 
 
@@ -139,6 +140,17 @@ class MontantsRecalculesTests(TestCase):
             {'produit': self.p.id, 'quantite': 1, 'devise': 'XOF'}]}, format='json')
         cat = self.c.get('/api/ventes/dashboard/').data['ca_by_categorie'][0]
         self.assertEqual(Decimal(cat['ca']), Decimal('14000'))
+
+    def test_remise_reservee_a_la_gestion(self):
+        avec_remise = lambda ticket: self.payload(ticket) | {
+            'lignes': [{'produit': self.p.id, 'quantite': 1, 'remise': 50}]}
+        caissier = Utilisateur.objects.create(organisation=self.a, username='awa', role='caissier')
+        r = client_for(caissier).post('/api/ventes/', avec_remise('T-1'), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('remise', str(r.data))
+        sup = Utilisateur.objects.create(organisation=self.a, username='sam', role='superviseur')
+        self.assertEqual(client_for(sup).post('/api/ventes/', avec_remise('T-2'), format='json').status_code, 201)
+        self.assertEqual(Vente.objects.get().total, Decimal('500'))
 
     def test_prix_absent_dans_la_devise_refuse(self):
         r = self.c.post('/api/ventes/', self.payload(devise='USD') | {

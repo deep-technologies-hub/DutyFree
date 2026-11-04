@@ -1,6 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 from tenants.mixins import TenantModelSerializer
+from tenants.permissions import GESTION
 from .models import Vente, LigneVente, Paiement, DonneesPassagers, arrondir
 
 PRIX_PAR_DEVISE = {'XOF': 'prix_xof', 'EUR': 'prix_eur', 'USD': 'prix_usd'}
@@ -37,6 +38,9 @@ class LigneVenteWriteSerializer(TenantModelSerializer):
         read_only_fields = ['prix_unitaire', 'total']
 
     def validate(self, attrs):
+        if attrs.get('remise') and self.context['request'].user.role not in GESTION:
+            raise serializers.ValidationError(
+                {'remise': "Seul un administrateur ou un superviseur peut accorder une remise."})
         produit, devise = attrs['produit'], attrs.get('devise', 'XOF')
         attrs['prix_unitaire'] = getattr(produit, PRIX_PAR_DEVISE[devise])
         if not attrs['prix_unitaire']:
