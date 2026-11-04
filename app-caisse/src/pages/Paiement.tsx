@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useCaisseStore, toXOF as toXOFAuTaux, fromXOF as fromXOFAuTaux } from '../store/caisseStore';
+import { useEffect, useState } from 'react';
+import { useCaisseStore, rejetDefinitif, toXOF as toXOFAuTaux, fromXOF as fromXOFAuTaux } from '../store/caisseStore';
+import type { ApiError } from '../api';
 import { ArrowLeft, CreditCard, Banknote, Smartphone, Check, Plus, X } from 'lucide-react';
 import type { Currency, PaymentMethod, Payment, Sale } from '../types';
 
@@ -17,7 +18,7 @@ const CURRENCIES: Currency[] = ['XOF', 'EUR', 'USD'];
 const METHODS: PaymentMethod[] = ['especes', 'carte', 'mobile_money'];
 
 export default function Paiement({ onBack, onComplete }: { onBack: () => void; onComplete: (sale: Sale) => void }) {
-  const { cartTotal, activeCurrency, completeSale, cart, rates } = useCaisseStore();
+  const { cartTotal, activeCurrency, completeSale, cart, rates, isOnline, refreshCartPrices } = useCaisseStore();
   const total = cartTotal();
 
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -25,6 +26,18 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
   const [currency, setCurrency] = useState<Currency>(activeCurrency);
   const [amount, setAmount] = useState('');
   const [done, setDone] = useState(false);
+  // En ligne, le panier est d'abord mis aux prix du serveur (catalogue local éventuellement périmé)
+  const [verification, setVerification] = useState(isOnline);
+  const [avis, setAvis] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    refreshCartPrices()
+      .then(change => { if (change) setAvis("Prix mis à jour depuis le catalogue : vérifiez le total avant d'encaisser."); })
+      .catch(e => { if (rejetDefinitif(e)) setErreur((e as ApiError).message); })
+      .finally(() => setVerification(false));
+  }, [isOnline, refreshCartPrices]);
 
   const toXOF = (v: number, c: Currency) => toXOFAuTaux(v, c, rates);
   const fromXOF = (v: number, c: Currency) => fromXOFAuTaux(v, c, rates);
@@ -49,7 +62,16 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
   const handleConfirm = () => {
     if (!isPaid) return;
     setDone(true);
-    setTimeout(async () => { const sale = await completeSale(payments); onComplete(sale); }, 800);
+    setErreur(null);
+    setTimeout(async () => {
+      try {
+        onComplete(await completeSale(payments));
+      } catch (e) {
+        // Refus du serveur : la vente n'est pas enregistrée, le panier et les règlements restent
+        setDone(false);
+        setErreur((e as ApiError).message);
+      }
+    }, 800);
   };
 
   const quickAmounts = currency === 'XOF' ? [5000, 10000, 25000, 50000, 100000] : [10, 20, 50, 100, 200];
@@ -203,9 +225,15 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
                 </div>
               </div>
             )}
-            <button onClick={handleConfirm} disabled={!isPaid} className="btn btn-primary btn-lg"
-              style={{ width: '100%', justifyContent: 'center', gap: 8, opacity: isPaid ? 1 : 0.3 }}>
-              <Check size={16} /> Valider la vente
+            {avis && (
+              <div className="badge badge-warn" style={{ display: 'block', marginBottom: 12, padding: '8px 10px', fontSize: 11, whiteSpace: 'normal' }}>{avis}</div>
+            )}
+            {erreur && (
+              <div className="badge badge-red" style={{ display: 'block', marginBottom: 12, padding: '8px 10px', fontSize: 11, whiteSpace: 'normal' }}>{erreur}</div>
+            )}
+            <button onClick={handleConfirm} disabled={!isPaid || verification} className="btn btn-primary btn-lg"
+              style={{ width: '100%', justifyContent: 'center', gap: 8, opacity: isPaid && !verification ? 1 : 0.3 }}>
+              <Check size={16} /> {verification ? 'Vérification des prix…' : 'Valider la vente'}
             </button>
           </div>
         </div>

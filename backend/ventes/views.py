@@ -7,11 +7,12 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
+from configuration.models import Configuration
 from tenants.mixins import TenantScopedViewSetMixin
 from tenants.permissions import GESTION, TOUS, CAISSIER
 from .models import Vente, DonneesPassagers
 from .serializers import (VenteSerializer, VenteListSerializer, VenteCreateSerializer,
-                           DonneesPassagersSerializer)
+                           CalculVenteSerializer, DonneesPassagersSerializer, calculer_montants)
 
 class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Vente.objects.select_related('caissier').prefetch_related('lignes__produit', 'paiements').all()
@@ -111,6 +112,17 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         vente.statut = 'annulee'
         vente.save(update_fields=['statut'])
         return Response(VenteSerializer(vente, context=self.get_serializer_context()).data)
+
+    @action(detail=False, methods=['post'])
+    def calculer(self, request):
+        """Montants d'un panier aux prix du catalogue, sans rien enregistrer."""
+        ser = CalculVenteSerializer(data=request.data, context=self.get_serializer_context())
+        ser.is_valid(raise_exception=True)
+        devise = ser.validated_data['devise']
+        lignes, totaux = calculer_montants(Configuration.get(self.tenant), devise, ser.validated_data['lignes'])
+        return Response({**totaux, 'devise': devise, 'lignes': [
+            {'produit': l.produit_id, 'quantite': l.quantite, 'devise': l.devise,
+             'prix_unitaire': l.prix_unitaire, 'remise': l.remise, 'total': l.total} for l in lignes]})
 
     @action(detail=False, methods=['post'])
     def sync_offline(self, request):

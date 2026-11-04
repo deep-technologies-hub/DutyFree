@@ -197,6 +197,17 @@ class MontantsRecalculesTests(TestCase):
         self.assertEqual(Vente.objects.get().ecart_paiement, Decimal('-500'))
         self.assertEqual(self.c.get('/api/ventes/').data['results'][0]['ecart_paiement'], '-500.00')
 
+    def test_calcul_d_un_panier_sans_enregistrement(self):
+        r = self.c.post('/api/ventes/calculer/', {'devise': 'XOF', 'lignes': [
+            {'produit': self.p.id, 'quantite': 2, 'devise': 'EUR', 'prix_unitaire': 1}]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((Decimal(r.data['total']), Decimal(r.data['lignes'][0]['prix_unitaire'])),
+                         (Decimal('13000'), Decimal('10')))
+        self.assertFalse(Vente.objects.exists())
+        caissier = Utilisateur.objects.create(organisation=self.a, username='awa', role='caissier')
+        self.assertEqual(client_for(caissier).post('/api/ventes/calculer/', {'lignes': [
+            {'produit': self.p.id, 'quantite': 1}]}, format='json').status_code, 200)
+
     def test_prix_absent_dans_la_devise_refuse(self):
         r = self.c.post('/api/ventes/', self.payload(devise='USD') | {
             'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}, format='json')

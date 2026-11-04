@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api, stockApi, ventesApi, authApi, authStorage } from '../api';
-import type { Produit, VentePayload, VenteResponse } from '../api';
+import type { ApiError, Produit, VentePayload, VenteResponse } from '../api';
 import type { CartItem, Sale, User, Currency, Payment, PaymentMethod, ExchangeRates } from '../types';
 
 // Numéro de ticket : T<AAMMJJ>-<appareil>-<séquence du jour>, ex. T261029-K7QZ-0001.
@@ -45,6 +45,15 @@ const priceInCurrency = (p: Produit, currency: Currency) => {
   if (currency === 'EUR') return Number(p.prix_eur) || 0;
   if (currency === 'USD') return Number(p.prix_usd) || 0;
   return Number(p.prix_xof) || 0;
+};
+
+/**
+ * Refus définitif du serveur (validation, droits…) : renvoyer la même vente échouera
+ * toujours. Réseau coupé, session expirée (401) ou abonnement inactif (402) : on réessaiera.
+ */
+export const rejetDefinitif = (e: unknown) => {
+  const status = (e as ApiError | undefined)?.status;
+  return typeof status === 'number' && status >= 400 && status < 500 && ![401, 402, 408, 429].includes(status);
 };
 
 /** Vente locale complétée avec les montants enregistrés par le serveur. */
@@ -101,6 +110,7 @@ interface CaisseStore {
   setCarteFidelite: (carte: CarteAssociee | null) => void;
   sales: Sale[];
   offlineQueue: VentePayload[];
+  refreshCartPrices: () => Promise<boolean>;
   completeSale: (payments: Payment[]) => Promise<Sale>;
   syncOfflineQueue: () => Promise<void>;
   login: (user: User) => void;
@@ -196,6 +206,24 @@ export const useCaisseStore = create<CaisseStore>()(
       sales: [],
       offlineQueue: [],
 
+      // Met le panier aux prix du serveur (catalogue local périmé). Renvoie true si un prix a changé.
+      refreshCartPrices: async () => {
+        const { cart, activeCurrency } = get();
+        if (cart.length === 0) return false;
+        const calcul = await ventesApi.calculer({
+          devise: activeCurrency,
+          lignes: cart.map(i => ({ produit: i.product.id as unknown as number, quantite: i.quantity, devise: i.currency, remise: i.discount })),
+        });
+        const changes = calcul.lignes.some((l, idx) => Number(l.total) !== Number(cart[idx].total));
+        set(s => ({
+          cart: s.cart.map((i, idx) => calcul.lignes[idx]
+            ? { ...i, unitPrice: Number(calcul.lignes[idx].prix_unitaire), total: Number(calcul.lignes[idx].total) }
+            : i),
+        }));
+        if (changes) get().loadProducts();
+        return changes;
+      },
+
       completeSale: async (payments) => {
         const { cart, currentUser, activeCurrency, passengerName, flightRef, destination, carteFidelite, isOnline, rates } = get();
         const now = new Date().toISOString();
@@ -257,11 +285,13 @@ export const useCaisseStore = create<CaisseStore>()(
 
         // En ligne, le ticket reprend les montants recalculés par le serveur ;
         // hors ligne, il garde le calcul local jusqu'à la synchronisation.
+        // Un refus du serveur remonte au caissier : la vente n'a pas eu lieu, le panier reste.
         let saved = sale;
         if (isOnline) {
           try {
             saved = saleFromApi(await ventesApi.create(payload), sale);
-          } catch {
+          } catch (e) {
+            if (rejetDefinitif(e)) throw e;
             set(s => ({ offlineQueue: [...s.offlineQueue, payload] }));
           }
         } else {

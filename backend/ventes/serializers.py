@@ -199,6 +199,12 @@ class VenteCreateSerializer(TenantModelSerializer):
         return VenteSerializer(instance, context=self.context).data
 
 
+class CalculVenteSerializer(serializers.Serializer):
+    """Aperçu des montants d'un panier, sans enregistrement (prix à jour avant encaissement)."""
+    devise = serializers.ChoiceField(choices=[d for d, _ in Vente.DEVISES], default='XOF')
+    lignes = LigneVenteWriteSerializer(many=True, allow_empty=False)
+
+
 # ── Serializers de lecture complète ───────────────────────────────────
 
 class VenteSerializer(TenantModelSerializer):
