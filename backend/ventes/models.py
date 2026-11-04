@@ -22,6 +22,8 @@ class Vente(TenantModel):
     sous_total = models.DecimalField(max_digits=14, decimal_places=2)
     remise_totale = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=14, decimal_places=2)
+    total_xof = models.DecimalField(max_digits=16, decimal_places=2, default=0,
+                                    help_text="Total converti au taux du jour de la vente (base des statistiques)")
     # Fidélité
     carte_fidelite = models.ForeignKey('fidelite.CarteFidelite', on_delete=models.SET_NULL, null=True, blank=True, related_name='ventes')
     # Passager
@@ -60,6 +62,8 @@ class LigneVente(models.Model):
     devise = models.CharField(max_length=3, choices=DEVISES, default='XOF')
     remise = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=14, decimal_places=2)
+    total_xof = models.DecimalField(max_digits=16, decimal_places=2, default=0,
+                                    help_text="Total converti au taux du jour de la vente")
 
     class Meta:
         verbose_name = "Ligne de vente"

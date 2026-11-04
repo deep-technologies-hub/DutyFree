@@ -1,13 +1,12 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Sum, Count, Avg, F, Case, When, Value, DecimalField
+from django.db.models import Sum, Count, Avg, F
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
-from configuration.models import Configuration
 from tenants.mixins import TenantScopedViewSetMixin
 from tenants.permissions import GESTION, TOUS, CAISSIER
 from .models import Vente, DonneesPassagers
@@ -146,11 +145,11 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         qs_month = ventes.filter(date_locale__date__gte=month_start)
         qs_today = ventes.filter(date_locale__date=today)
 
-        ca_month = qs_month.aggregate(total=Sum('total'))['total'] or 0
-        ca_today = qs_today.aggregate(total=Sum('total'))['total'] or 0
+        ca_month = qs_month.aggregate(total=Sum('total_xof'))['total'] or 0
+        ca_today = qs_today.aggregate(total=Sum('total_xof'))['total'] or 0
         tickets_month = qs_month.count()
         tickets_today = qs_today.count()
-        ticket_moyen = qs_month.aggregate(avg=Avg('total'))['avg'] or 0
+        ticket_moyen = qs_month.aggregate(avg=Avg('total_xof'))['avg'] or 0
 
         # CA journalier 30j
         thirty_days_ago = today - timedelta(days=30)
@@ -158,23 +157,16 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
             ventes.filter(date_locale__date__gte=thirty_days_ago)
             .annotate(jour=TruncDate('date_locale'))
             .values('jour')
-            .annotate(ca=Sum('total'), tickets=Count('id'))
+            .annotate(ca=Sum('total_xof'), tickets=Count('id'))
             .order_by('jour')
         )
 
-        # CA par catégorie en XOF (clé conservée pour le frontend : contient le nom de la catégorie).
-        # Les lignes sont dans leur propre devise : conversion aux taux configurés avant de sommer.
-        cfg = Configuration.get(self.tenant)
-        ligne_xof = Case(
-            *[When(lignes__devise=d, then=F('lignes__total') * Value(cfg.taux_vers_xof(d))) for d in ('EUR', 'USD')],
-            default=F('lignes__total'),
-            output_field=DecimalField(max_digits=20, decimal_places=2),
-        )
+        # CA par catégorie en XOF (clé conservée pour le frontend : contient le nom de la catégorie)
         ca_by_cat = [
             {'lignes__produit__categorie': row['lignes__produit__categorie__nom'] or 'Sans catégorie',
              'ca': row['ca'], 'tickets': row['tickets']}
             for row in qs_month.values('lignes__produit__categorie__nom')
-            .annotate(ca=Sum(ligne_xof), tickets=Count('id', distinct=True))
+            .annotate(ca=Sum('lignes__total_xof'), tickets=Count('id', distinct=True))
             .order_by('-ca')
             if row['ca'] is not None
         ]
@@ -182,7 +174,7 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         # Par caissier
         ca_by_cashier = list(
             qs_month.values('caissier__first_name', 'caissier__last_name', 'numero_caisse')
-            .annotate(ca=Sum('total'), tickets=Count('id'))
+            .annotate(ca=Sum('total_xof'), tickets=Count('id'))
             .order_by('-ca')
         )
 

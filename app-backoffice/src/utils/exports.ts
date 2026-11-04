@@ -131,8 +131,10 @@ export function downloadPdf(opts: {
   doc.save(opts.filename);
 }
 
-/** Montant encaissé d'une vente en XOF (paiements nets de la monnaie rendue). Les décimaux DRF arrivent en chaînes. */
-export function venteXof(v: { total: number | string; devise: string; paiements?: { montant_xof: number | string; monnaie_rendue: number | string }[] }) {
+/** CA d'une vente en XOF, au taux du jour de la vente. Les décimaux DRF arrivent en chaînes. */
+export function venteXof(v: { total: number | string; total_xof?: number | string; devise: string; paiements?: { montant_xof: number | string; monnaie_rendue: number | string }[] }) {
+  if (v.total_xof != null) return Number(v.total_xof);
+  // Réponse sans total_xof : montant encaissé (paiements nets de la monnaie rendue)
   if (v.paiements?.length) {
     return v.paiements.reduce((s, p) => s + Number(p.montant_xof) - Number(p.monnaie_rendue || 0), 0);
   }

@@ -7,6 +7,24 @@ from .models import Vente, LigneVente, Paiement, DonneesPassagers, arrondir
 PRIX_PAR_DEVISE = {'XOF': 'prix_xof', 'EUR': 'prix_eur', 'USD': 'prix_usd'}
 
 
+def calculer_montants(cfg, devise, lignes_data):
+    """
+    Lignes (non enregistrées) et totaux d'une vente à partir des lignes validées.
+    Chaque ligne est convertie en XOF au taux du jour ; les totaux de la vente en
+    découlent, exprimés dans sa devise.
+    """
+    lignes = [LigneVente(**l) for l in lignes_data]
+    for ligne in lignes:
+        ligne.calculer_total()
+        ligne.total_xof = arrondir(ligne.total * cfg.taux_vers_xof(ligne.devise))
+    taux_vente = cfg.taux_vers_xof(devise)
+    brut_xof = sum(l.montant_brut * cfg.taux_vers_xof(l.devise) for l in lignes)
+    total_xof = sum(l.total_xof for l in lignes)
+    sous_total, total = arrondir(brut_xof / taux_vente), arrondir(total_xof / taux_vente)
+    return lignes, {'sous_total': sous_total, 'remise_totale': sous_total - total,
+                    'total': total, 'total_xof': total_xof}
+
+
 # ── Serializers de lecture ────────────────────────────────────────────
 
 class PaiementSerializer(TenantModelSerializer):
@@ -35,7 +53,7 @@ class LigneVenteWriteSerializer(TenantModelSerializer):
         model = LigneVente
         exclude = ['vente']   # ← clé du fix
         # Montants fixés par le serveur à partir du catalogue : ceux du client sont ignorés.
-        read_only_fields = ['prix_unitaire', 'total']
+        read_only_fields = ['prix_unitaire', 'total', 'total_xof']
 
     def validate(self, attrs):
         if attrs.get('remise') and self.context['request'].user.role not in GESTION:
@@ -71,7 +89,7 @@ class VenteCreateSerializer(TenantModelSerializer):
         fields = '__all__'
         # Une vente arrive toujours « payée » : l'annulation passe par l'action dédiée.
         # Les montants sont recalculés par le serveur : ceux envoyés par la caisse sont ignorés.
-        read_only_fields = ['caissier', 'statut', 'sous_total', 'remise_totale', 'total']
+        read_only_fields = ['caissier', 'statut', 'sous_total', 'remise_totale', 'total', 'total_xof']
 
     def validate(self, attrs):
         if not attrs.get('lignes'):
@@ -84,16 +102,9 @@ class VenteCreateSerializer(TenantModelSerializer):
         lignes_data = validated_data.pop('lignes')
         paiements_data = validated_data.pop('paiements')
         cfg = Configuration.get(validated_data['organisation'])
+        lignes, totaux = calculer_montants(cfg, validated_data.get('devise', 'XOF'), lignes_data)
 
-        # Totaux de la vente = lignes converties dans la devise de la vente (via le XOF)
-        lignes = [LigneVente(**l) for l in lignes_data]
-        taux_vente = cfg.taux_vers_xof(validated_data.get('devise', 'XOF'))
-        en_devise_vente = lambda montant, devise: montant * cfg.taux_vers_xof(devise) / taux_vente
-        sous_total = arrondir(sum(en_devise_vente(l.montant_brut, l.devise) for l in lignes))
-        total = arrondir(sum(en_devise_vente(l.calculer_total(), l.devise) for l in lignes))
-
-        vente = Vente.objects.create(**validated_data, sous_total=sous_total,
-                                     remise_totale=sous_total - total, total=total)
+        vente = Vente.objects.create(**validated_data, **totaux)
 
         for ligne in lignes:
             ligne.vente = vente
@@ -120,7 +131,7 @@ class VenteCreateSerializer(TenantModelSerializer):
             from fidelite.models import MouvementFidelite
 
             # Calcul des points (basé sur le total en XOF)
-            montant_xof = vente.total * taux_vente
+            montant_xof = vente.total_xof
 
             points_gagnes = round(float(montant_xof) * float(cfg.points_par_xof), 2)
             
@@ -144,7 +155,7 @@ class VenteCreateSerializer(TenantModelSerializer):
 
         from stock.signals import broadcast_new_sale
         transaction.on_commit(lambda: broadcast_new_sale(
-            vente.organisation_id, vente.numero_caisse, vente.total, len(lignes_data)))
+            vente.organisation_id, vente.numero_caisse, vente.total_xof, len(lignes_data)))
         return vente
 
     def to_representation(self, instance):
@@ -174,7 +185,7 @@ class VenteListSerializer(TenantModelSerializer):
         model = Vente
         fields = [
             'id', 'numero_ticket', 'caissier_nom', 'numero_caisse',
-            'total', 'devise', 'statut', 'date_locale', 'passager_nom',
+            'total', 'total_xof', 'devise', 'statut', 'date_locale', 'passager_nom',
             'vol_reference', 'destination', 'synced', 'nb_articles',
             'lignes', 'paiements',
         ]

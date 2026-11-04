@@ -453,6 +453,8 @@ export interface VenteListItem {
   caissier_nom: string;
   numero_caisse: string;
   total: number;
+  /** Total converti au taux du jour de la vente */
+  total_xof: number;
   devise: string;
   statut: string;
   date_locale: string;
@@ -461,7 +463,7 @@ export interface VenteListItem {
   destination: string;
   synced: boolean;
   nb_articles: number;
-  lignes: { produit: number; produit_nom: string; quantite: number; prix_unitaire: number; total: number }[];
+  lignes: { produit: number; produit_nom: string; quantite: number; prix_unitaire: number; devise: string; total: number; total_xof: number }[];
   paiements: { methode: 'especes' | 'carte' | 'mobile_money'; devise: string; montant: number; montant_xof: number; monnaie_rendue: number; taux_change: number }[];
 }
 

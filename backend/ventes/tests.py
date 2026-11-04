@@ -141,6 +141,17 @@ class MontantsRecalculesTests(TestCase):
         cat = self.c.get('/api/ventes/dashboard/').data['ca_by_categorie'][0]
         self.assertEqual(Decimal(cat['ca']), Decimal('14000'))
 
+    def test_statistiques_en_xof_au_taux_du_jour_de_la_vente(self):
+        # Vente de 20 EUR à 650 : 13 000 XOF, même si le taux change ensuite
+        self.c.post('/api/ventes/', self.payload(devise='EUR') | {
+            'lignes': [{'produit': self.p.id, 'quantite': 2, 'devise': 'EUR'}]}, format='json')
+        self.assertEqual(Vente.objects.get().total_xof, Decimal('13000'))
+        Configuration.objects.filter(organisation=self.a).update(taux_eur_xof=700)
+        dash = self.c.get('/api/ventes/dashboard/').data
+        for ca in (dash['ca_month'], dash['ca_today'], dash['ticket_moyen'],
+                   dash['ca_daily'][0]['ca'], dash['ca_by_cashier'][0]['ca'], dash['ca_by_categorie'][0]['ca']):
+            self.assertEqual(Decimal(ca), Decimal('13000'))
+
     def test_remise_reservee_a_la_gestion(self):
         avec_remise = lambda ticket: self.payload(ticket) | {
             'lignes': [{'produit': self.p.id, 'quantite': 1, 'remise': 50}]}

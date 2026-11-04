@@ -133,15 +133,13 @@ export function ExportsPage() {
 
     else if (exp.id === 'mix_produits') {
       const ventes = await ventesPeriode();
-      // Le CA de chaque ligne est converti en XOF au prorata du ticket (gère les ventes en devises)
+      // CA de chaque ligne en XOF, au taux du jour de la vente (gère les ventes en devises)
       const produits = new Map<string, { qte: number; ca: number; tickets: Set<string> }>();
       for (const v of ventes) {
-        const totalLignes = v.lignes.reduce((s, l) => s + Number(l.total), 0);
-        const ratio = totalLignes ? venteXof(v) / totalLignes : 0;
         for (const l of v.lignes) {
           const cur = produits.get(l.produit_nom) ?? { qte: 0, ca: 0, tickets: new Set<string>() };
           cur.qte += Number(l.quantite);
-          cur.ca += Number(l.total) * ratio;
+          cur.ca += Number(l.total_xof);
           cur.tickets.add(v.numero_ticket);
           produits.set(l.produit_nom, cur);
         }

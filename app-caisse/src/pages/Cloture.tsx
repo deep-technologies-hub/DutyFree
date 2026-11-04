@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useCaisseStore } from '../store/caisseStore';
+import { useCaisseStore, toXOF } from '../store/caisseStore';
 import { FileText, WifiOff, LogOut, ChevronLeft, TrendingUp, ShoppingBag } from 'lucide-react';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
@@ -89,7 +89,7 @@ function SignaturePad({ id }: { id: string }) {
 }
 
 export default function Cloture({ onBack }: { onBack: () => void }) {
-  const { currentUser, sales, offlineQueue, logout } = useCaisseStore();
+  const { currentUser, sales, offlineQueue, logout, rates } = useCaisseStore();
 
   const todaySales = sales.filter(s => {
     const d = new Date(s.createdAt);
@@ -97,12 +97,14 @@ export default function Cloture({ onBack }: { onBack: () => void }) {
     return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
 
-  const totalXOF = todaySales.reduce((s, v) => s + v.total, 0);
+  // Ventes en devises : conversion en XOF avant de sommer
+  const totalXOF = todaySales.reduce((s, v) => s + toXOF(v.total, v.currency, rates), 0);
   const totalArticles = todaySales.reduce((s, v) => s + v.items.reduce((a, i) => a + i.quantity, 0), 0);
   const avgTicket = todaySales.length > 0 ? totalXOF / todaySales.length : 0;
 
   const byMethod: Record<string, number> = {};
-  todaySales.forEach(v => v.payments.forEach(p => { byMethod[p.method] = (byMethod[p.method] || 0) + p.amountXOF; }));
+  // Montant net : la monnaie rendue sur les espèces n'est pas encaissée
+  todaySales.forEach(v => v.payments.forEach(p => { byMethod[p.method] = (byMethod[p.method] || 0) + p.amountXOF - (p.change || 0); }));
 
   const byCurrency: Record<string, number> = {};
   todaySales.forEach(v => v.payments.forEach(p => { byCurrency[p.currency] = (byCurrency[p.currency] || 0) + p.amount; }));
@@ -201,7 +203,7 @@ export default function Cloture({ onBack }: { onBack: () => void }) {
                     <td className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{sale.ticketNumber}</td>
                     <td className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{new Date(sale.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
                     <td style={{ fontSize: 12 }}>{sale.items.reduce((s, i) => s + i.quantity, 0)} art.</td>
-                    <td className="mono" style={{ fontWeight: 700 }}>{fmt(sale.total)} F</td>
+                    <td className="mono" style={{ fontWeight: 700 }}>{sale.currency === 'XOF' ? `${fmt(sale.total)} F` : `${sale.total.toFixed(2)} ${sale.currency}`}</td>
                     <td>
                       {sale.payments.map((p, j) => (
                         <span key={j} className="badge badge-neutral" style={{ fontSize: 9, marginRight: 3 }}>{methodLabel(p.method)}</span>

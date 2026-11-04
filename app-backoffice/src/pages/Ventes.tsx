@@ -243,7 +243,7 @@ export default function Ventes() {
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 13 }}>
                   <div style={{ flex: 1, paddingRight: 16 }}>
                     <div style={{ fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>{l.produit_nom || `Produit n° ${l.produit}`}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{l.quantite} x {fmt(l.prix_unitaire || 0)} {selectedTicket.devise}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{l.quantite} x {fmt(l.prix_unitaire || 0)} {l.devise}</div>
                   </div>
                   <div style={{ fontWeight: 700, color: 'var(--text)', fontFamily: 'IBM Plex Mono, monospace' }}>
                     {fmt(Number(l.total))}
