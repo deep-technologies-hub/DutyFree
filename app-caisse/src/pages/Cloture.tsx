@@ -205,8 +205,8 @@ export default function Cloture({ onBack }: { onBack: () => void }) {
                     <td style={{ fontSize: 12 }}>{sale.items.reduce((s, i) => s + i.quantity, 0)} art.</td>
                     <td className="mono" style={{ fontWeight: 700 }}>{sale.currency === 'XOF' ? `${fmt(sale.total)} F` : `${sale.total.toFixed(2)} ${sale.currency}`}</td>
                     <td>
-                      {sale.payments.map((p, j) => (
-                        <span key={j} className="badge badge-neutral" style={{ fontSize: 9, marginRight: 3 }}>{methodLabel(p.method)}</span>
+                      {[...new Set(sale.payments.map(p => p.method))].map((m, j) => (
+                        <span key={j} className="badge badge-neutral" style={{ fontSize: 9, marginRight: 3 }}>{methodLabel(m)}</span>
                       ))}
                     </td>
                   </tr>

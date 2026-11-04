@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useCaisseStore, toXOF } from '../store/caisseStore';
+import { useCaisseStore } from '../store/caisseStore';
 import { Printer, ShoppingBag, Check, RotateCcw, Usb } from 'lucide-react';
 import type { Sale } from '../types';
 import { escposPrinter, buildTicketHtml } from '../utils/escpos';
@@ -12,7 +12,7 @@ const fmt = (n: number, c: string) => {
 };
 
 export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => void }) {
-  const { currentUser, rates } = useCaisseStore();
+  const { currentUser } = useCaisseStore();
   const boutique = useBoutique();
   const nomBoutique = boutique?.nom_boutique || 'DUTY FREE';
   const printRef = useRef<HTMLDivElement>(null);
@@ -85,9 +85,9 @@ export default function Ticket({ sale, onClose }: { sale: Sale; onClose: () => v
     await escposPrinter.print();
   };
 
-  const totalXOF = sale.payments.reduce((s, p) => s + p.amountXOF, 0);
   const totalPaid = sale.payments.reduce((s, p) => s + p.amount, 0);
-  const changeXOF = Math.max(0, totalXOF - toXOF(sale.total, sale.currency, rates));
+  // Monnaie enregistrée sur les paiements (calculée par le serveur en ligne) : pas de résidu d'arrondi
+  const changeXOF = Math.round(sale.payments.reduce((s, p) => s + (p.change || 0), 0));
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 24px', fontFamily: 'IBM Plex Sans, sans-serif' }}>

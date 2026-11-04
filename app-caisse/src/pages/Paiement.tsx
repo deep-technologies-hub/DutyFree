@@ -217,7 +217,7 @@ export default function Paiement({ onBack, onComplete }: { onBack: () => void; o
           </div>
 
           <div style={{ padding: '18px 16px', borderTop: '1px solid var(--border)' }}>
-            {changeXOF > 0 && isPaid && (
+            {changeXOF >= 0.5 && isPaid && (
               <div style={{ marginBottom: 16, padding: '14px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 10, textAlign: 'center' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Monnaie à rendre</div>
                 <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 24, fontWeight: 800, color: 'var(--accent)' }}>
