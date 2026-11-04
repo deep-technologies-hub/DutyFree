@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useBackofficeStore } from '../store/backofficeStore';
-import { ventesApi, type ApiError, type VenteListItem } from '../api';
+import { ventesApi, type ApiError, type VenteListItem, type VenteRejetee } from '../api';
 import { downloadExcel, downloadPdf, venteXof, methodesVente, fmtDateHeure, fmtNombre } from '../utils/exports';
-import { Search, Download, Receipt, CreditCard, Banknote, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { Search, Download, Receipt, CreditCard, Banknote, Smartphone, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
 const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)} M` : `${fmt(n)}`;
@@ -49,6 +49,33 @@ export default function Ventes() {
   useEffect(() => {
     ventesApi.caisses().then(setCaisses).catch(() => setCaisses([]));
   }, []);
+
+  // Ventes hors ligne refusées par le serveur : à réintégrer ou classer
+  const [rejets, setRejets] = useState<VenteRejetee[]>([]);
+  const [rejetEnCours, setRejetEnCours] = useState<number | null>(null);
+  const chargerRejets = () => ventesApi.rejetees.list().then(setRejets).catch(() => setRejets([]));
+  useEffect(() => { chargerRejets(); }, []);
+
+  const traiterRejet = async (r: VenteRejetee, action: 'reintegrer' | 'classer') => {
+    let note = '';
+    if (action === 'classer') {
+      note = (prompt(`Classer le ticket ${r.numero_ticket} sans l'enregistrer.
+Motif (obligatoire) :`) || '').trim();
+      if (!note) return;
+    }
+    setRejetEnCours(r.id);
+    try {
+      if (action === 'reintegrer') await ventesApi.rejetees.reintegrer(r.id);
+      else await ventesApi.rejetees.classer(r.id, note);
+      const qs = new URLSearchParams(Object.entries(filtres).filter(([, v]) => v)).toString();
+      fetchVentes(qs ? `?${qs}` : '');
+    } catch (e) {
+      alert(`${action === 'reintegrer' ? 'Réintégration' : 'Classement'} impossible : ${(e as ApiError).message ?? 'réessayez'}`);
+    } finally {
+      setRejetEnCours(null);
+      chargerRejets();
+    }
+  };
 
   const filtres = { search: search.trim(), numero_caisse: caisse, methode: method };
 
@@ -130,6 +157,43 @@ export default function Ventes() {
           </div>
         ))}
       </div>
+
+      {/* Ventes hors ligne refusées */}
+      {rejets.length > 0 && (
+        <div className="card" style={{ marginBottom: 20, border: '1px solid var(--c-warn)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', background: 'var(--c-warn-dim)', color: 'var(--c-warn)', fontWeight: 600, fontSize: 13 }}>
+            <AlertTriangle size={14} />
+            {rejets.length} vente{rejets.length > 1 ? 's' : ''} hors ligne refusée{rejets.length > 1 ? 's' : ''} à la synchronisation
+            <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text-2)' }}>
+              : absentes des ventes et du stock. Corrigez la cause (prix manquant…) puis réintégrez-les, ou classez-les.
+            </span>
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr><th>N° Ticket</th><th>Date</th><th>Caisse</th><th style={{ textAlign: 'right' }}>Total caisse</th><th>Motif du refus</th><th></th></tr>
+            </thead>
+            <tbody>
+              {rejets.map(r => (
+                <tr key={r.id}>
+                  <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>{r.numero_ticket}</td>
+                  <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--text-3)' }}>
+                    {new Date(r.payload.date_locale || r.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td style={{ fontSize: 12 }}>{r.numero_caisse}{r.caissier_nom ? ` · ${r.caissier_nom}` : ''}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                    {r.payload.total != null ? `${fmt(Number(r.payload.total))} ${r.payload.devise ?? ''}` : '—'}
+                  </td>
+                  <td style={{ fontSize: 12, color: 'var(--c-down)' }}>{r.motif}</td>
+                  <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    <button className="btn btn-xs btn-primary" disabled={rejetEnCours === r.id} onClick={() => traiterRejet(r, 'reintegrer')}>Réintégrer</button>
+                    <button className="btn btn-xs btn-ghost" style={{ marginLeft: 6 }} disabled={rejetEnCours === r.id} onClick={() => traiterRejet(r, 'classer')}>Classer</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>

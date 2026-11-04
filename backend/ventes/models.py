@@ -109,6 +109,37 @@ class Paiement(models.Model):
         return f"{self.methode} {self.montant} {self.devise}"
 
 
+class VenteRejetee(TenantModel):
+    """
+    Vente hors ligne refusée à la synchronisation. Elle a eu lieu (articles remis, argent
+    encaissé) : on la conserve pour qu'un responsable la réintègre ou la classe.
+    """
+    STATUTS = [('a_traiter', 'À traiter'), ('reintegree', 'Réintégrée'), ('classee', 'Classée')]
+
+    numero_ticket = models.CharField(max_length=40)
+    numero_caisse = models.CharField(max_length=20, blank=True)
+    caissier = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                 related_name='ventes_rejetees')
+    payload = models.JSONField(help_text="Vente telle qu'envoyée par la caisse")
+    motif = models.TextField()
+    statut = models.CharField(max_length=12, choices=STATUTS, default='a_traiter')
+    note = models.CharField(max_length=200, blank=True)
+    traitee_par = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                    blank=True, related_name='+')
+    traitee_le = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Vente hors ligne refusée"
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['organisation', 'numero_ticket'], name='uniq_vente_rejetee_ticket'),
+        ]
+
+    def __str__(self):
+        return f"{self.numero_ticket} — {self.get_statut_display()}"
+
+
 class DonneesPassagers(TenantModel):
     """Données externes aéroport — saisie manuelle mensuelle"""
     annee = models.IntegerField()

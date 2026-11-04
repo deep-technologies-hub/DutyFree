@@ -286,6 +286,14 @@ export const ventesApi = {
   syncOffline: (ventes: VentePayload[]) =>
     api.post<{ synced: number; errors: unknown[] }>('/ventes/sync_offline/', { ventes }),
   dashboard: () => api.get<DashboardData>('/ventes/dashboard/'),
+  /** Ventes hors ligne refusées à la synchronisation, à régulariser (admin / superviseur) */
+  rejetees: {
+    list: (statut = 'a_traiter') => fetchAllPages<VenteRejetee>(`/ventes/rejetees/?statut=${statut}`),
+    /** Enregistre la vente (stock décrémenté) une fois la cause corrigée */
+    reintegrer: (id: number, note = '') => api.post<{ rejet: VenteRejetee }>(`/ventes/rejetees/${id}/reintegrer/`, { note }),
+    /** Clôt sans enregistrer (doublon, test…) */
+    classer: (id: number, note: string) => api.post<VenteRejetee>(`/ventes/rejetees/${id}/classer/`, { note }),
+  },
   tauxCapture: () => api.get<TauxCapture[]>('/ventes/taux_capture/'),
   passagers: {
     list: () => api.get<PaginatedResponse<DonneesPassagers>>('/ventes/passagers/'),
@@ -445,6 +453,18 @@ export interface PaiementPayload {
 export interface VenteResponse {
   id: number;
   numero_ticket: string;
+}
+
+export interface VenteRejetee {
+  id: number;
+  numero_ticket: string;
+  numero_caisse: string;
+  caissier_nom: string;
+  payload: { date_locale?: string; devise?: string; total?: number; lignes?: unknown[] };
+  motif: string;
+  statut: 'a_traiter' | 'reintegree' | 'classee';
+  note: string;
+  created_at: string;
 }
 
 export interface VenteListItem {

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Vente, LigneVente, Paiement, DonneesPassagers
+from .models import Vente, LigneVente, Paiement, DonneesPassagers, VenteRejetee
 
 class LigneVenteInline(admin.TabularInline):
     model = LigneVente
@@ -21,3 +21,10 @@ class VenteAdmin(admin.ModelAdmin):
 @admin.register(DonneesPassagers)
 class DonneesPassagersAdmin(admin.ModelAdmin):
     list_display = ['organisation', 'mois', 'annee', 'nombre_passagers', 'saisie_par', 'created_at']
+
+@admin.register(VenteRejetee)
+class VenteRejeteeAdmin(admin.ModelAdmin):
+    list_display = ['numero_ticket', 'organisation', 'numero_caisse', 'caissier', 'statut', 'created_at']
+    list_filter = ['organisation', 'statut']
+    search_fields = ['numero_ticket']
+    readonly_fields = ['created_at']

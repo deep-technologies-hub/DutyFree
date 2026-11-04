@@ -84,8 +84,11 @@ const saleFromApi = (v: VenteResponse, local: Sale): Sale => ({
 
 export interface CarteAssociee { id: number; numero: string; nom: string }
 
-/** Vente hors ligne refusée par le serveur : retirée de la file, gardée pour le superviseur. */
-export interface VenteRefusee { payload: VentePayload; motif: string; refuseeLe: string }
+/**
+ * Vente hors ligne refusée par le serveur : retirée de la file et signalée au caissier.
+ * `conservee` : le serveur l'a gardée pour régularisation dans le backoffice.
+ */
+export interface VenteRefusee { payload: VentePayload; motif: string; refuseeLe: string; conservee: boolean }
 
 interface CaisseStore {
   currentUser: User | null;
@@ -319,15 +322,15 @@ export const useCaisseStore = create<CaisseStore>()(
           // Confirmées : retirées. Refusées à la validation : retirées aussi (les renvoyer échouerait
           // toujours) et gardées avec leur motif. Incident serveur : restent en file pour réessayer.
           const confirmes = new Set(result.tickets ?? []);
-          const motifs = new Map(result.errors.filter(e => e.errors)
-            .map(e => [e.ticket, firstFieldError(e.errors) ?? 'Refusée par le serveur']));
+          const refus = new Map(result.errors.filter(e => e.errors)
+            .map(e => [e.ticket, { motif: firstFieldError(e.errors) ?? 'Refusée par le serveur', conservee: !!e.conservee }]));
           const refuseeLe = new Date().toISOString();
           set(s => ({
-            offlineQueue: s.offlineQueue.filter(v => !confirmes.has(v.numero_ticket) && !motifs.has(v.numero_ticket)),
+            offlineQueue: s.offlineQueue.filter(v => !confirmes.has(v.numero_ticket) && !refus.has(v.numero_ticket)),
             rejectedSales: [
               ...s.rejectedSales,
-              ...s.offlineQueue.filter(v => motifs.has(v.numero_ticket))
-                .map(payload => ({ payload, motif: motifs.get(payload.numero_ticket)!, refuseeLe })),
+              ...s.offlineQueue.filter(v => refus.has(v.numero_ticket))
+                .map(payload => ({ payload, ...refus.get(payload.numero_ticket)!, refuseeLe })),
             ],
           }));
         } catch { /* retry later */ }

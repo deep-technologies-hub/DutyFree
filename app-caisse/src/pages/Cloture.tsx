@@ -232,7 +232,7 @@ export default function Cloture({ onBack }: { onBack: () => void }) {
             <WifiOff size={14} style={{ flexShrink: 0 }} />
             <div>
               <strong>{rejectedSales.length} vente(s) hors ligne refusée(s) par le serveur.</strong>
-              <br />Elles ne figurent ni dans les ventes ni dans le stock : à régulariser avec le superviseur
+              <br />Elles ne figurent ni dans les ventes ni dans le stock tant que le superviseur ne les a pas régularisées dans le backoffice
               ({rejectedSales.map(r => `${r.payload.numero_ticket} : ${r.motif}`).join(' ; ')}).
             </div>
           </div>

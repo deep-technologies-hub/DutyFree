@@ -4,7 +4,7 @@ from django.db import transaction
 from rest_framework import serializers
 from tenants.mixins import TenantModelSerializer
 from tenants.permissions import GESTION
-from .models import Vente, LigneVente, Paiement, DonneesPassagers, arrondir
+from .models import Vente, LigneVente, Paiement, DonneesPassagers, VenteRejetee, arrondir
 
 PRIX_PAR_DEVISE = {'XOF': 'prix_xof', 'EUR': 'prix_eur', 'USD': 'prix_usd'}
 
@@ -25,6 +25,16 @@ def calculer_montants(cfg, devise, lignes_data):
     sous_total, total = arrondir(brut_xof / taux_vente), arrondir(total_xof / taux_vente)
     return lignes, {'sous_total': sous_total, 'remise_totale': sous_total - total,
                     'total': total, 'total_xof': total_xof}
+
+
+def format_erreurs(erreurs, prefixe=''):
+    """Erreurs DRF (imbriquées) en texte lisible : « lignes : Prix en USD non renseigné… »."""
+    if isinstance(erreurs, dict):
+        return ' ; '.join(filter(None, (format_erreurs(e, k if k != 'non_field_errors' else prefixe)
+                                        for k, e in erreurs.items())))
+    if isinstance(erreurs, list):
+        return ' ; '.join(filter(None, (format_erreurs(e, prefixe) for e in erreurs)))
+    return f"{prefixe} : {erreurs}" if prefixe else str(erreurs)
 
 
 def format_xof(montant):
@@ -231,6 +241,17 @@ class VenteListSerializer(TenantModelSerializer):
             'vol_reference', 'destination', 'synced', 'nb_articles',
             'lignes', 'paiements',
         ]
+
+
+class VenteRejeteeSerializer(TenantModelSerializer):
+    caissier_nom = serializers.CharField(source='caissier.full_name', read_only=True, default='')
+    traitee_par_nom = serializers.CharField(source='traitee_par.full_name', read_only=True, default='')
+
+    class Meta:
+        model = VenteRejetee
+        fields = '__all__'
+        read_only_fields = ['numero_ticket', 'numero_caisse', 'caissier', 'payload', 'motif', 'statut',
+                            'note', 'traitee_par', 'traitee_le']
 
 
 class DonneesPassagersSerializer(TenantModelSerializer):

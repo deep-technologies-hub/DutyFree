@@ -9,7 +9,7 @@ from configuration.models import Configuration
 from stock.models import Categorie
 from tenants.tests import client_for, make_org, produit
 from utilisateurs.models import Utilisateur
-from ventes.models import Vente
+from ventes.models import Vente, VenteRejetee
 
 
 class FiltresVentesEtExportsTests(TestCase):
@@ -214,6 +214,48 @@ class MontantsRecalculesTests(TestCase):
         r = self.c.post('/api/ventes/sync_offline/', {'ventes': [refusee, self.payload('OFF-2')]}, format='json')
         self.assertEqual((r.data['tickets'], [e['ticket'] for e in r.data['errors']]), (['OFF-2'], ['OFF-1']))
         self.assertIn('Prix en USD', str(r.data['errors'][0]['errors']))
+
+    def test_vente_refusee_conservee_puis_reintegree(self):
+        caissier = Utilisateur.objects.create(organisation=self.a, username='awa', role='caissier')
+        refusee = self.payload('OFF-1', devise='USD') | {'lignes': [{'produit': self.p.id, 'quantite': 3, 'devise': 'USD'}],
+                                                       'paiements': [{'methode': 'especes', 'devise': 'USD', 'montant': 30}]}
+        r = client_for(caissier).post('/api/ventes/sync_offline/', {'ventes': [refusee]}, format='json')
+        self.assertTrue(r.data['errors'][0]['conservee'])
+        # Renvoyée une seconde fois (caisse sans réponse) : pas de doublon
+        client_for(caissier).post('/api/ventes/sync_offline/', {'ventes': [refusee]}, format='json')
+        rejet = VenteRejetee.objects.get()
+        self.assertIn('Prix en USD', rejet.motif)
+        # Réservé à la gestion
+        self.assertEqual(client_for(caissier).get('/api/ventes/rejetees/').status_code, 403)
+        self.assertEqual(self.c.get('/api/ventes/rejetees/?statut=a_traiter').data['count'], 1)
+
+        url = f'/api/ventes/rejetees/{rejet.id}/reintegrer/'
+        self.assertEqual(self.c.post(url, {}, format='json').status_code, 400)  # prix toujours absent
+        self.p.prix_usd = 10
+        self.p.save()
+        Configuration.objects.filter(organisation=self.a).update(taux_usd_xof=600)
+        r = self.c.post(url, {'note': 'Prix USD renseigné'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        vente = Vente.objects.get(numero_ticket='OFF-1')
+        self.assertEqual((vente.total, vente.caissier, vente.ecart_paiement), (Decimal('30'), caissier, 0))
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.stock, 97)
+        rejet.refresh_from_db()
+        self.assertEqual((rejet.statut, rejet.traitee_par), ('reintegree', self.admin_a))
+        self.assertEqual(self.c.post(url, {}, format='json').status_code, 400)  # déjà traitée
+
+    def test_vente_refusee_classee_sans_suite(self):
+        refusee = self.payload('OFF-1', devise='USD') | {'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}
+        self.c.post('/api/ventes/sync_offline/', {'ventes': [refusee]}, format='json')
+        rejet = VenteRejetee.objects.get()
+        url = f'/api/ventes/rejetees/{rejet.id}/classer/'
+        self.assertEqual(self.c.post(url, {}, format='json').status_code, 400)  # motif obligatoire
+        self.assertEqual(self.c.post(url, {'note': 'Vente de test'}, format='json').status_code, 200)
+        self.assertEqual(VenteRejetee.objects.get().statut, 'classee')
+        self.assertFalse(Vente.objects.exists())
+        # Isolation : une autre organisation ne la voit pas
+        _, admin_b = make_org('beta')
+        self.assertEqual(client_for(admin_b).get('/api/ventes/rejetees/').data['count'], 0)
 
     def test_prix_absent_dans_la_devise_refuse(self):
         r = self.c.post('/api/ventes/', self.payload(devise='USD') | {

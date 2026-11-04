@@ -138,18 +138,22 @@ export default function POS() {
         <div style={{ background: 'var(--c-down-dim)', borderBottom: '1px solid var(--c-down-bd)', padding: '5px 16px', fontSize: 11, color: 'var(--c-down)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
             <AlertTriangle size={11} />
-            {rejectedSales.length} vente(s) hors ligne refusée(s) par le serveur : à signaler au superviseur
+            {rejectedSales.length} vente(s) hors ligne refusée(s) par le serveur : transmise(s) au superviseur pour régularisation
             <button onClick={() => setShowRejets(v => !v)} className="btn btn-ghost btn-xs" style={{ marginLeft: 'auto', color: 'var(--c-down)' }}>
               {showRejets ? 'Masquer' : 'Détails'}
             </button>
           </div>
-          {showRejets && rejectedSales.map(({ payload: v, motif }) => (
+          {showRejets && rejectedSales.map(({ payload: v, motif, conservee }) => (
             <div key={v.numero_ticket} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 0 0 17px' }}>
               <span style={{ fontFamily: 'IBM Plex Mono,monospace' }}>{v.numero_ticket}</span>
               <span>{new Date(v.date_locale).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
               <span style={{ fontFamily: 'IBM Plex Mono,monospace' }}>{fmt(v.total, v.devise as Currency)}</span>
               <span style={{ flex: 1 }}>{motif}</span>
-              <button onClick={() => dismissRejectedSale(v.numero_ticket)} className="btn btn-ghost btn-xs" style={{ color: 'var(--c-down)' }}>Retirer</button>
+              {/* Gardée par le serveur : le caissier peut l'effacer de sa caisse sans perdre la vente */}
+              <button onClick={() => dismissRejectedSale(v.numero_ticket)} className="btn btn-ghost btn-xs" style={{ color: 'var(--c-down)' }}
+                title={conservee ? 'La vente reste dans le backoffice (Ventes > Ventes hors ligne refusées)' : "Notez le ticket avant de le retirer : le serveur ne l'a pas conservé"}>
+                {conservee ? 'Vu' : 'Retirer'}
+              </button>
             </div>
           ))}
         </div>

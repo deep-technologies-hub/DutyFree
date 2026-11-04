@@ -10,9 +10,10 @@ from rest_framework.exceptions import ValidationError
 from configuration.models import Configuration
 from tenants.mixins import TenantScopedViewSetMixin
 from tenants.permissions import GESTION, TOUS, CAISSIER
-from .models import Vente, DonneesPassagers
+from .models import Vente, DonneesPassagers, VenteRejetee
 from .serializers import (VenteSerializer, VenteListSerializer, VenteCreateSerializer,
-                           CalculVenteSerializer, DonneesPassagersSerializer, calculer_montants)
+                           CalculVenteSerializer, DonneesPassagersSerializer, VenteRejeteeSerializer,
+                           calculer_montants, format_erreurs)
 
 class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Vente.objects.select_related('caissier').prefetch_related('lignes__produit', 'paiements').all()
@@ -143,7 +144,14 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
                     ser.save(organisation=self.tenant, caissier=request.user)
                     synced.append(ticket)
                 else:
-                    errors.append({'ticket': ticket, 'errors': ser.errors})
+                    # Conservée côté serveur : la caisse peut l'oublier sans perdre la vente
+                    if ticket:
+                        VenteRejetee.objects.get_or_create(
+                            organisation=self.tenant, numero_ticket=ticket,
+                            defaults={'numero_caisse': str(v.get('numero_caisse', ''))[:20],
+                                      'caissier': request.user, 'payload': v,
+                                      'motif': format_erreurs(ser.errors)})
+                    errors.append({'ticket': ticket, 'errors': ser.errors, 'conservee': bool(ticket)})
             except Exception as e:
                 errors.append({'ticket': ticket, 'error': str(e)})
         return Response({'synced': len(synced), 'errors': errors, 'tickets': synced})
@@ -232,6 +240,62 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
                 'tickets': tickets, 'taux': taux,
             })
         return Response(results)
+
+
+class VenteRejeteeViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
+    """Ventes hors ligne refusées à la synchronisation, à régulariser par un responsable."""
+    queryset = VenteRejetee.objects.select_related('caissier', 'traitee_par').all()
+    serializer_class = VenteRejeteeSerializer
+    roles_lecture = roles_ecriture = GESTION
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        return qs.filter(statut=statut) if statut else qs
+
+    def _a_traiter(self):
+        rejet = self.get_object()
+        if rejet.statut != 'a_traiter':
+            raise ValidationError("Cette vente a déjà été traitée.")
+        return rejet
+
+    def _clore(self, rejet, statut, note):
+        rejet.statut, rejet.note = statut, note[:200]
+        rejet.traitee_par, rejet.traitee_le = self.request.user, timezone.now()
+        rejet.save()
+
+    @action(detail=True, methods=['post'])
+    def reintegrer(self, request, pk=None):
+        """
+        Enregistre la vente refusée, une fois la cause corrigée (prix renseigné, produit…) :
+        le stock est décrémenté et la vente rejoint les statistiques. La validation se fait
+        avec les droits du responsable, qui peut ainsi entériner une remise.
+        """
+        rejet = self._a_traiter()
+        if Vente.objects.filter(organisation=self.tenant, numero_ticket=rejet.numero_ticket).exists():
+            raise ValidationError("Une vente porte déjà ce numéro de ticket.")
+        ctx = {**self.get_serializer_context(), 'hors_ligne': True}
+        ser = VenteCreateSerializer(data={**rejet.payload, 'synced': True}, context=ctx)
+        if not ser.is_valid():
+            # Motif mis à jour (hors transaction) : le responsable voit ce qui bloque encore
+            rejet.motif = format_erreurs(ser.errors)
+            rejet.save(update_fields=['motif'])
+            raise ValidationError(ser.errors)
+        with transaction.atomic():
+            vente = ser.save(organisation=self.tenant, caissier=rejet.caissier)
+            self._clore(rejet, 'reintegree', (request.data.get('note') or '').strip())
+        return Response({'rejet': VenteRejeteeSerializer(rejet, context=self.get_serializer_context()).data,
+                         'vente': VenteSerializer(vente, context=self.get_serializer_context()).data})
+
+    @action(detail=True, methods=['post'])
+    def classer(self, request, pk=None):
+        """Clôt une vente refusée sans l'enregistrer (doublon, test…), avec un motif."""
+        rejet = self._a_traiter()
+        note = (request.data.get('note') or '').strip()
+        if not note:
+            raise ValidationError({'note': "Indiquez pourquoi cette vente est classée sans suite."})
+        self._clore(rejet, 'classee', note)
+        return Response(self.get_serializer(rejet).data)
 
 
 class DonneesPassagersViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):

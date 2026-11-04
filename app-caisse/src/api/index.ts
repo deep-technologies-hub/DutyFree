@@ -410,7 +410,8 @@ export interface VenteResponse {
 export interface SyncOfflineResult {
   synced: number;
   tickets: string[];
-  errors: { ticket: string; errors?: unknown; error?: string }[];
+  /** `conservee` : vente refusée gardée par le serveur pour régularisation dans le backoffice */
+  errors: { ticket: string; errors?: unknown; error?: string; conservee?: boolean }[];
 }
 
 export interface CalculVente {
