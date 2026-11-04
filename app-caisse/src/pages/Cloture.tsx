@@ -89,7 +89,7 @@ function SignaturePad({ id }: { id: string }) {
 }
 
 export default function Cloture({ onBack }: { onBack: () => void }) {
-  const { currentUser, sales, offlineQueue, logout, rates } = useCaisseStore();
+  const { currentUser, sales, offlineQueue, rejectedSales, logout, rates } = useCaisseStore();
 
   const todaySales = sales.filter(s => {
     const d = new Date(s.createdAt);
@@ -223,6 +223,17 @@ export default function Cloture({ onBack }: { onBack: () => void }) {
             <div>
               <strong>{offlineQueue.length} vente(s) en attente de synchronisation.</strong>
               <br />Assurez-vous d'être en ligne avant de clôturer pour éviter toute perte de données.
+            </div>
+          </div>
+        )}
+
+        {rejectedSales.length > 0 && (
+          <div className="alert alert-red" style={{ marginBottom: 24 }}>
+            <WifiOff size={14} style={{ flexShrink: 0 }} />
+            <div>
+              <strong>{rejectedSales.length} vente(s) hors ligne refusée(s) par le serveur.</strong>
+              <br />Elles ne figurent ni dans les ventes ni dans le stock : à régulariser avec le superviseur
+              ({rejectedSales.map(r => `${r.payload.numero_ticket} : ${r.motif}`).join(' ; ')}).
             </div>
           </div>
         )}

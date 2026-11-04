@@ -208,6 +208,13 @@ class MontantsRecalculesTests(TestCase):
         self.assertEqual(client_for(caissier).post('/api/ventes/calculer/', {'lignes': [
             {'produit': self.p.id, 'quantite': 1}]}, format='json').status_code, 200)
 
+    def test_sync_offline_signale_les_refus_definitifs(self):
+        # La caisse retire de sa file les ventes refusées à la validation (clé « errors »)
+        refusee = self.payload('OFF-1', devise='USD') | {'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}
+        r = self.c.post('/api/ventes/sync_offline/', {'ventes': [refusee, self.payload('OFF-2')]}, format='json')
+        self.assertEqual((r.data['tickets'], [e['ticket'] for e in r.data['errors']]), (['OFF-2'], ['OFF-1']))
+        self.assertIn('Prix en USD', str(r.data['errors'][0]['errors']))
+
     def test_prix_absent_dans_la_devise_refuse(self):
         r = self.c.post('/api/ventes/', self.payload(devise='USD') | {
             'lignes': [{'produit': self.p.id, 'quantite': 1, 'devise': 'USD'}]}, format='json')

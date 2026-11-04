@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useCaisseStore, toXOF } from '../store/caisseStore';
-import { Search, X, Plus, Minus, ChevronRight, Wifi, WifiOff, User, Scan, ShoppingCart, LogOut, Star } from 'lucide-react';
+import { Search, X, Plus, Minus, ChevronRight, Wifi, WifiOff, User, Scan, ShoppingCart, LogOut, Star, AlertTriangle } from 'lucide-react';
 import type { Currency } from '../types';
 import { ProductImage } from '../components/ProductImage';
 import Paiement from './Paiement';
@@ -29,7 +29,7 @@ export default function POS() {
     currentUser, logout, isOnline, offlineQueue,
     passengerName, flightRef, destination, setPassenger, clearPassenger,
     carteFidelite, setCarteFidelite,
-    loadProducts, rates,
+    loadProducts, rates, rejectedSales, dismissRejectedSale,
   } = useCaisseStore();
 
   // Generate dynamic categories from products
@@ -47,6 +47,7 @@ export default function POS() {
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [showPax, setShowPax] = useState(false);
   const [showFid, setShowFid] = useState(false);
+  const [showRejets, setShowRejets] = useState(false);
   const [pName, setPName] = useState(passengerName);
   const [pFlt, setPFlt] = useState(flightRef);
   const [pDst, setPDst] = useState(destination);
@@ -129,6 +130,28 @@ export default function POS() {
       {!isOnline && (
         <div style={{ background: 'var(--c-warn-dim)', borderBottom: '1px solid var(--c-warn-bd)', padding: '5px 16px', fontSize: 11, fontWeight: 600, color: 'var(--c-warn)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <WifiOff size={11} /> Mode hors-ligne — synchronisation automatique au retour
+        </div>
+      )}
+
+      {/* Ventes hors ligne refusées à la synchronisation */}
+      {rejectedSales.length > 0 && (
+        <div style={{ background: 'var(--c-down-dim)', borderBottom: '1px solid var(--c-down-bd)', padding: '5px 16px', fontSize: 11, color: 'var(--c-down)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+            <AlertTriangle size={11} />
+            {rejectedSales.length} vente(s) hors ligne refusée(s) par le serveur : à signaler au superviseur
+            <button onClick={() => setShowRejets(v => !v)} className="btn btn-ghost btn-xs" style={{ marginLeft: 'auto', color: 'var(--c-down)' }}>
+              {showRejets ? 'Masquer' : 'Détails'}
+            </button>
+          </div>
+          {showRejets && rejectedSales.map(({ payload: v, motif }) => (
+            <div key={v.numero_ticket} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 0 0 17px' }}>
+              <span style={{ fontFamily: 'IBM Plex Mono,monospace' }}>{v.numero_ticket}</span>
+              <span>{new Date(v.date_locale).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+              <span style={{ fontFamily: 'IBM Plex Mono,monospace' }}>{fmt(v.total, v.devise as Currency)}</span>
+              <span style={{ flex: 1 }}>{motif}</span>
+              <button onClick={() => dismissRejectedSale(v.numero_ticket)} className="btn btn-ghost btn-xs" style={{ color: 'var(--c-down)' }}>Retirer</button>
+            </div>
+          ))}
         </div>
       )}
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { api, stockApi, ventesApi, authApi, authStorage } from '../api';
+import { api, stockApi, ventesApi, authApi, authStorage, firstFieldError } from '../api';
 import type { ApiError, Produit, VentePayload, VenteResponse } from '../api';
 import type { CartItem, Sale, User, Currency, Payment, PaymentMethod, ExchangeRates } from '../types';
 
@@ -84,6 +84,9 @@ const saleFromApi = (v: VenteResponse, local: Sale): Sale => ({
 
 export interface CarteAssociee { id: number; numero: string; nom: string }
 
+/** Vente hors ligne refusée par le serveur : retirée de la file, gardée pour le superviseur. */
+export interface VenteRefusee { payload: VentePayload; motif: string; refuseeLe: string }
+
 interface CaisseStore {
   currentUser: User | null;
   isOnline: boolean;
@@ -110,6 +113,8 @@ interface CaisseStore {
   setCarteFidelite: (carte: CarteAssociee | null) => void;
   sales: Sale[];
   offlineQueue: VentePayload[];
+  rejectedSales: VenteRefusee[];
+  dismissRejectedSale: (ticket: string) => void;
   refreshCartPrices: () => Promise<boolean>;
   completeSale: (payments: Payment[]) => Promise<Sale>;
   syncOfflineQueue: () => Promise<void>;
@@ -205,6 +210,9 @@ export const useCaisseStore = create<CaisseStore>()(
 
       sales: [],
       offlineQueue: [],
+      rejectedSales: [],
+      dismissRejectedSale: (ticket) =>
+        set(s => ({ rejectedSales: s.rejectedSales.filter(r => r.payload.numero_ticket !== ticket) })),
 
       // Met le panier aux prix du serveur (catalogue local périmé). Renvoie true si un prix a changé.
       refreshCartPrices: async () => {
@@ -308,9 +316,20 @@ export const useCaisseStore = create<CaisseStore>()(
         if (offlineQueue.length === 0) return;
         try {
           const result = await ventesApi.syncOffline(offlineQueue);
-          // Ne retirer que les tickets confirmés par le serveur (les autres restent en file)
+          // Confirmées : retirées. Refusées à la validation : retirées aussi (les renvoyer échouerait
+          // toujours) et gardées avec leur motif. Incident serveur : restent en file pour réessayer.
           const confirmes = new Set(result.tickets ?? []);
-          set(s => ({ offlineQueue: s.offlineQueue.filter(v => !confirmes.has(v.numero_ticket)) }));
+          const motifs = new Map(result.errors.filter(e => e.errors)
+            .map(e => [e.ticket, firstFieldError(e.errors) ?? 'Refusée par le serveur']));
+          const refuseeLe = new Date().toISOString();
+          set(s => ({
+            offlineQueue: s.offlineQueue.filter(v => !confirmes.has(v.numero_ticket) && !motifs.has(v.numero_ticket)),
+            rejectedSales: [
+              ...s.rejectedSales,
+              ...s.offlineQueue.filter(v => motifs.has(v.numero_ticket))
+                .map(payload => ({ payload, motif: motifs.get(payload.numero_ticket)!, refuseeLe })),
+            ],
+          }));
         } catch { /* retry later */ }
       },
 
@@ -355,6 +374,7 @@ export const useCaisseStore = create<CaisseStore>()(
         activeCurrency: s.activeCurrency,
         rates: s.rates, // derniers taux connus, pour encaisser en devises hors ligne
         offlineQueue: s.offlineQueue,
+        rejectedSales: s.rejectedSales,
         products: s.products, // catalogue disponible hors ligne, même après un rechargement
         sales: s.sales.slice(0, 50), // Garder 50 dernières ventes
       }),

@@ -67,7 +67,7 @@ export interface ApiError {
 }
 
 /** Premier message d'erreur de validation DRF ({champ: ["message"]}, y compris imbriqué : {lignes: [{devise: [...]}]}) */
-function firstFieldError(body: unknown, field?: string): string | undefined {
+export function firstFieldError(body: unknown, field?: string): string | undefined {
   if (typeof body === 'string') return field && field !== 'non_field_errors' ? `${field} : ${body}` : body;
   const entries: [string | undefined, unknown][] = Array.isArray(body) ? body.map(v => [field, v])
     : body && typeof body === 'object' ? Object.entries(body) : [];
@@ -238,7 +238,7 @@ export const ventesApi = {
   calculer: (data: Pick<VentePayload, 'devise'> & { lignes: Pick<LigneVentePayload, 'produit' | 'quantite' | 'devise' | 'remise'>[] }) =>
     api.post<CalculVente>('/ventes/calculer/', data),
   syncOffline: (ventes: VentePayload[]) =>
-    api.post<{ synced: number; errors: unknown[]; tickets: string[] }>('/ventes/sync_offline/', { ventes }),
+    api.post<SyncOfflineResult>('/ventes/sync_offline/', { ventes }),
   dashboard: () => api.get<DashboardData>('/ventes/dashboard/'),
   tauxCapture: () => api.get<TauxCapture[]>('/ventes/taux_capture/'),
   passagers: {
@@ -404,6 +404,13 @@ export interface VenteResponse {
     total: string;
   }[];
   paiements: { methode: string; devise: string; montant: string; montant_xof: string; monnaie_rendue: string }[];
+}
+
+/** `errors` : refus de validation (définitif) ; `error` : incident serveur (on réessaiera) */
+export interface SyncOfflineResult {
+  synced: number;
+  tickets: string[];
+  errors: { ticket: string; errors?: unknown; error?: string }[];
 }
 
 export interface CalculVente {
