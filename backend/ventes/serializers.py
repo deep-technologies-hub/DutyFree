@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 from rest_framework import serializers
 from tenants.mixins import TenantModelSerializer
@@ -23,6 +25,30 @@ def calculer_montants(cfg, devise, lignes_data):
     sous_total, total = arrondir(brut_xof / taux_vente), arrondir(total_xof / taux_vente)
     return lignes, {'sous_total': sous_total, 'remise_totale': sous_total - total,
                     'total': total, 'total_xof': total_xof}
+
+
+def format_xof(montant):
+    return f"{montant:,.0f}".replace(',', ' ')
+
+
+def ventiler_paiements(cfg, devise, total_xof, paiements_data):
+    """
+    Paiements (non enregistrés) convertis en XOF aux taux configurés, monnaie rendue
+    sur les espèces, et écart restant (négatif : manque, positif : trop-perçu non rendu).
+    """
+    paiements = [Paiement(**p) for p in paiements_data]
+    for p in paiements:
+        p.taux_change = cfg.taux_vers_xof(p.devise)
+        p.montant_xof = arrondir(p.montant * p.taux_change)
+        p.monnaie_rendue = 0
+    surplus = sum((p.montant_xof for p in paiements), Decimal(0)) - total_xof
+    # La monnaie se rend sur les espèces, en partant du dernier versement
+    for p in reversed([p for p in paiements if p.methode == 'especes']):
+        p.monnaie_rendue = min(max(surplus, Decimal(0)), p.montant_xof)
+        surplus -= p.monnaie_rendue
+    # Arrondis tolérés : un centime de chaque devise en jeu (vente et paiements)
+    tolerance = Decimal('0.01') * (cfg.taux_vers_xof(devise) + sum(p.taux_change for p in paiements))
+    return paiements, (Decimal(0) if abs(surplus) <= tolerance else surplus)
 
 
 # ── Serializers de lecture ────────────────────────────────────────────
@@ -70,12 +96,12 @@ class LigneVenteWriteSerializer(TenantModelSerializer):
 class PaiementWriteSerializer(TenantModelSerializer):
     """Utilisé à la création — le champ 'vente' est injecté dans create()"""
     montant = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0)
-    montant_xof = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0)
-    monnaie_rendue = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0, default=0)
 
     class Meta:
         model = Paiement
         exclude = ['vente']   # ← clé du fix
+        # Conversion et monnaie rendue calculées par le serveur aux taux configurés
+        read_only_fields = ['montant_xof', 'monnaie_rendue', 'taux_change']
 
 
 # ── Serializer de création vente ──────────────────────────────────────
@@ -89,7 +115,8 @@ class VenteCreateSerializer(TenantModelSerializer):
         fields = '__all__'
         # Une vente arrive toujours « payée » : l'annulation passe par l'action dédiée.
         # Les montants sont recalculés par le serveur : ceux envoyés par la caisse sont ignorés.
-        read_only_fields = ['caissier', 'statut', 'sous_total', 'remise_totale', 'total', 'total_xof']
+        read_only_fields = ['caissier', 'statut', 'sous_total', 'remise_totale', 'total', 'total_xof',
+                            'ecart_paiement']
 
     def validate(self, attrs):
         if not attrs.get('lignes'):
@@ -102,16 +129,25 @@ class VenteCreateSerializer(TenantModelSerializer):
         lignes_data = validated_data.pop('lignes')
         paiements_data = validated_data.pop('paiements')
         cfg = Configuration.get(validated_data['organisation'])
-        lignes, totaux = calculer_montants(cfg, validated_data.get('devise', 'XOF'), lignes_data)
+        devise = validated_data.get('devise', 'XOF')
+        lignes, totaux = calculer_montants(cfg, devise, lignes_data)
+        paiements, ecart = ventiler_paiements(cfg, devise, totaux['total_xof'], paiements_data)
+        # En ligne, l'encaissement doit correspondre au total. Une vente hors ligne a déjà
+        # eu lieu : elle est enregistrée, avec son écart, pour vérification.
+        if ecart and not self.context.get('hors_ligne'):
+            raise serializers.ValidationError({'paiements': (
+                f"Paiement insuffisant : il manque {format_xof(-ecart)} XOF." if ecart < 0 else
+                f"Le montant payé par carte ou mobile money dépasse le total de {format_xof(ecart)} XOF.")})
 
-        vente = Vente.objects.create(**validated_data, **totaux)
+        vente = Vente.objects.create(**validated_data, **totaux, ecart_paiement=ecart)
 
         for ligne in lignes:
             ligne.vente = vente
             ligne.save()
 
-        for p in paiements_data:
-            Paiement.objects.create(vente=vente, **p)
+        for p in paiements:
+            p.vente = vente
+            p.save()
 
         # Décrémenter le stock via MouvementStock
         from stock.models import MouvementStock
@@ -185,7 +221,7 @@ class VenteListSerializer(TenantModelSerializer):
         model = Vente
         fields = [
             'id', 'numero_ticket', 'caissier_nom', 'numero_caisse',
-            'total', 'total_xof', 'devise', 'statut', 'date_locale', 'passager_nom',
+            'total', 'total_xof', 'ecart_paiement', 'devise', 'statut', 'date_locale', 'passager_nom',
             'vol_reference', 'destination', 'synced', 'nb_articles',
             'lignes', 'paiements',
         ]

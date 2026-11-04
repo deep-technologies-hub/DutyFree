@@ -186,6 +186,7 @@ export default function Ventes() {
                   <td>
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: 'var(--accent)' }}>{sale.numero_ticket}</span>
                     {sale.statut === 'annulee' && <span className="badge badge-danger" style={{ marginLeft: 6 }}>Annulée</span>}
+                    {Number(sale.ecart_paiement) !== 0 && <span className="badge badge-warn" style={{ marginLeft: 6 }} title="Vente hors ligne dont l'encaissement ne correspond pas au total">Écart</span>}
                   </td>
                   <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: 'var(--text-3)' }}>
                     {new Date(sale.date_locale).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -262,6 +263,11 @@ export default function Ventes() {
               <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: -12, marginBottom: 16 }}>
                 Paiement : {methodesVente(selectedTicket)}
               </div>
+              {Number(selectedTicket.ecart_paiement) !== 0 && (
+                <div className="badge badge-warn" style={{ display: 'block', marginBottom: 16, padding: '8px 10px', fontSize: 12, whiteSpace: 'normal' }}>
+                  Vente hors ligne à vérifier : {Number(selectedTicket.ecart_paiement) < 0 ? 'il manque' : 'trop-perçu non rendu de'} {fmt(Math.abs(Number(selectedTicket.ecart_paiement)))} XOF à l'encaissement.
+                </div>
+              )}
               {selectedTicket.statut === 'annulee' ? (
                 <div className="badge badge-danger" style={{ display: 'block', textAlign: 'center', padding: 8, marginBottom: 12 }}>
                   Vente annulée : articles remis en stock

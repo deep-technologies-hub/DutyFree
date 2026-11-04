@@ -24,6 +24,10 @@ class Vente(TenantModel):
     total = models.DecimalField(max_digits=14, decimal_places=2)
     total_xof = models.DecimalField(max_digits=16, decimal_places=2, default=0,
                                     help_text="Total converti au taux du jour de la vente (base des statistiques)")
+    ecart_paiement = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0,
+        help_text="Encaissé net − total, en XOF. Non nul uniquement pour une vente hors ligne à vérifier "
+                  "(négatif : manque, positif : trop-perçu non rendu)")
     # Fidélité
     carte_fidelite = models.ForeignKey('fidelite.CarteFidelite', on_delete=models.SET_NULL, null=True, blank=True, related_name='ventes')
     # Passager

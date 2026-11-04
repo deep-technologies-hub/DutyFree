@@ -455,6 +455,8 @@ export interface VenteListItem {
   total: number;
   /** Total converti au taux du jour de la vente */
   total_xof: number;
+  /** Encaissé net − total (XOF) : non nul pour une vente hors ligne mal encaissée */
+  ecart_paiement: number;
   devise: string;
   statut: string;
   date_locale: string;

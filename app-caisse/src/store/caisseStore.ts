@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api, stockApi, ventesApi, authApi, authStorage } from '../api';
 import type { Produit, VentePayload, VenteResponse } from '../api';
-import type { CartItem, Sale, User, Currency, Payment, ExchangeRates } from '../types';
+import type { CartItem, Sale, User, Currency, Payment, PaymentMethod, ExchangeRates } from '../types';
 
 // Numéro de ticket : T<AAMMJJ>-<appareil>-<séquence du jour>, ex. T261029-K7QZ-0001.
 // Généré hors ligne, il doit rester unique entre caisses : le serveur rejette les doublons
@@ -58,6 +58,13 @@ const saleFromApi = (v: VenteResponse, local: Sale): Sale => ({
     currency: l.devise as Currency,
     discount: Number(l.remise),
     total: Number(l.total),
+  })),
+  payments: v.paiements.map(p => ({
+    method: p.methode as PaymentMethod,
+    currency: p.devise as Currency,
+    amount: Number(p.montant),
+    amountXOF: Number(p.montant_xof),
+    change: Number(p.monnaie_rendue),
   })),
   subtotal: Number(v.sous_total),
   discountTotal: Number(v.remise_totale),

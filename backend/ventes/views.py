@@ -117,7 +117,8 @@ class VenteViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         """Synchronisation des ventes offline — batch"""
         ventes_data = request.data.get('ventes', [])
         synced, errors = [], []
-        ctx = self.get_serializer_context()
+        # Vente déjà encaissée hors ligne : un écart de paiement est conservé, pas refusé
+        ctx = {**self.get_serializer_context(), 'hors_ligne': True}
         for v in ventes_data:
             ticket = v.get('numero_ticket')
             try:

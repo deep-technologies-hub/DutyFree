@@ -67,6 +67,8 @@ class FiltresVentesEtExportsTests(TestCase):
         self.assertIsNone(r.data['next'])
 
     def test_dashboard_paiements_nets_de_la_monnaie_rendue(self):
+        self.pa.prix_xof = 8000
+        self.pa.save()
         self.vendre(self.c, self.pa, 'T-1', 'CAISSE-01', 'especes', montant=8000, rendu=2000)
         paiements = self.c.get('/api/ventes/dashboard/').data['ca_by_payment']
         self.assertEqual(float(paiements[0]['amount']), 8000)
@@ -102,7 +104,7 @@ class MontantsRecalculesTests(TestCase):
             'numero_ticket': ticket, 'numero_caisse': 'C1', 'devise': devise,
             'sous_total': 1, 'remise_totale': 0, 'total': 1, 'date_locale': timezone.now().isoformat(),
             'lignes': [{'produit': self.p.id, 'quantite': 2, 'prix_unitaire': 1, 'total': 2}],
-            'paiements': [{'methode': 'especes', 'montant': 2, 'montant_xof': 2}],
+            'paiements': [{'methode': 'especes', 'montant': 100000, 'montant_xof': 2}],
         }
 
     def test_prix_falsifie_enregistre_au_vrai_prix(self):
@@ -162,6 +164,38 @@ class MontantsRecalculesTests(TestCase):
         sup = Utilisateur.objects.create(organisation=self.a, username='sam', role='superviseur')
         self.assertEqual(client_for(sup).post('/api/ventes/', avec_remise('T-2'), format='json').status_code, 201)
         self.assertEqual(Vente.objects.get().total, Decimal('500'))
+
+    def avec_paiements(self, ticket, *paiements, devise='XOF'):
+        return self.payload(ticket, devise) | {'paiements': [
+            {'methode': m, 'devise': d, 'montant': montant, 'montant_xof': 999999, 'monnaie_rendue': 0}
+            for m, d, montant in paiements]}
+
+    def test_paiements_convertis_et_monnaie_calculee_par_le_serveur(self):
+        # Total 2 000 XOF : 2 EUR par carte (1 300 XOF au taux de 650) + 1 000 XOF en espèces
+        r = self.c.post('/api/ventes/', self.avec_paiements('T-1', ('carte', 'EUR', 2), ('especes', 'XOF', 1000)),
+                        format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        carte, especes = sorted(Vente.objects.get().paiements.all(), key=lambda p: p.methode)
+        self.assertEqual((carte.montant_xof, carte.taux_change, carte.monnaie_rendue),
+                         (Decimal('1300'), Decimal('650'), Decimal('0')))
+        self.assertEqual((especes.montant_xof, especes.monnaie_rendue), (Decimal('1000'), Decimal('300')))
+        self.assertEqual(Vente.objects.get().ecart_paiement, 0)
+
+    def test_paiement_en_ligne_incoherent_refuse(self):
+        insuffisant = self.avec_paiements('T-1', ('especes', 'XOF', 1999))
+        r = self.c.post('/api/ventes/', insuffisant, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('il manque 1 XOF', str(r.data))
+        carte_en_trop = self.avec_paiements('T-2', ('carte', 'XOF', 5000))
+        self.assertEqual(self.c.post('/api/ventes/', carte_en_trop, format='json').status_code, 400)
+        self.assertFalse(Vente.objects.exists())
+
+    def test_vente_hors_ligne_mal_encaissee_enregistree_avec_ecart(self):
+        r = self.c.post('/api/ventes/sync_offline/', {'ventes': [
+            self.avec_paiements('OFF-1', ('especes', 'XOF', 1500))]}, format='json')
+        self.assertEqual(r.data['synced'], 1, r.data)
+        self.assertEqual(Vente.objects.get().ecart_paiement, Decimal('-500'))
+        self.assertEqual(self.c.get('/api/ventes/').data['results'][0]['ecart_paiement'], '-500.00')
 
     def test_prix_absent_dans_la_devise_refuse(self):
         r = self.c.post('/api/ventes/', self.payload(devise='USD') | {

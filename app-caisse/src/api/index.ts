@@ -397,6 +397,7 @@ export interface VenteResponse {
     remise: string;
     total: string;
   }[];
+  paiements: { methode: string; devise: string; montant: string; montant_xof: string; monnaie_rendue: string }[];
 }
 
 export interface VenteListItem {
